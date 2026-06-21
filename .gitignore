@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.next/
+.env
+.env.local
+.env.production
+*.log
+logs/
+.DS_Store
+coverage/
+*.dll.node
+*.dll.node.tmp*
+contracts/artifacts/
+contracts/cache/
+*.tsbuildinfo

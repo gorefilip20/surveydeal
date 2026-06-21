@@ -1,0 +1,41 @@
+module.exports = {
+  apps: [
+    {
+      name: "surveydeal-backend",
+      cwd: "./backend",
+      script: "dist/app.js",
+      instances: 1,
+      exec_mode: "fork",
+      env_production: {
+        NODE_ENV: "production",
+        BACKEND_PORT: 5000,
+      },
+      max_memory_restart: "512M",
+      error_file: "./logs/backend-error.log",
+      out_file: "./logs/backend-out.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      restart_delay: 5000,
+      max_restarts: 10,
+      min_uptime: "10s",
+    },
+    {
+      name: "surveydeal-frontend",
+      cwd: "./frontend",
+      script: "node_modules/.bin/next",
+      args: "start -H 0.0.0.0 -p 3000",
+      instances: 1,
+      exec_mode: "fork",
+      env_production: {
+        NODE_ENV: "production",
+        PORT: 3000,
+      },
+      max_memory_restart: "512M",
+      error_file: "./logs/frontend-error.log",
+      out_file: "./logs/frontend-out.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      restart_delay: 5000,
+      max_restarts: 10,
+      min_uptime: "10s",
+    },
+  ],
+};

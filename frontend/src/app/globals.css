@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 220 30% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 30% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 30% 10%;
+    --primary: 152 70% 40%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 60% 50%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 210 20% 93%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 200 65% 45%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 25% 88%;
+    --input: 214 25% 88%;
+    --ring: 152 70% 40%;
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    --background: 225 30% 4%;
+    --foreground: 210 40% 95%;
+    --card: 224 28% 7%;
+    --card-foreground: 210 40% 95%;
+    --popover: 224 28% 7%;
+    --popover-foreground: 210 40% 95%;
+    --primary: 152 70% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 55% 48%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 224 25% 14%;
+    --muted-foreground: 215 20% 60%;
+    --accent: 200 60% 42%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 224 20% 16%;
+    --input: 224 20% 16%;
+    --ring: 152 70% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .gradient-brand {
+    @apply bg-gradient-to-r from-emerald-500 via-teal-500 to-blue-500;
+  }
+  .gradient-brand-subtle {
+    @apply bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-blue-500/10;
+  }
+  .text-gradient-brand {
+    @apply bg-gradient-to-r from-emerald-400 via-teal-400 to-blue-400 bg-clip-text text-transparent;
+  }
+  .glow-green {
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.15), 0 0 60px rgba(16, 185, 129, 0.05);
+  }
+  .glow-blue {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.15), 0 0 60px rgba(59, 130, 246, 0.05);
+  }
+  .glass {
+    @apply bg-white/5 backdrop-blur-xl border border-white/10;
+  }
+}

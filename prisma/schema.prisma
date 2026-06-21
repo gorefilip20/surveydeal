@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EscrowState {
+  CREATED
+  FUNDED
+  ACTIVE
+  COMPLETED
+  DISPUTED
+  REFUNDED
+}
+
+enum EscrowMode {
+  LOCKED
+  ARBITER
+}
+
+enum UserRole {
+  BUYER
+  SELLER
+  ADMIN
+  ARBITER
+}
+
+enum TransactionType {
+  FUND
+  RELEASE
+  REFUND
+  DISPUTE_RESOLUTION
+  FEE_COLLECTION
+  DEPOSIT_WALLET
+  WITHDRAWAL
+  ADMIN_RELEASE
+}
+
+enum FundingMethod {
+  WALLET_DIRECT
+  DEPOSIT_TRANSFER
+}
+
+enum TokenStatus {
+  ACTIVE
+  BLACKLISTED
+  FEATURED
+}
+
+enum DisputeOutcome {
+  PENDING
+  BUYER_FAVORED
+  SELLER_FAVORED
+  SPLIT
+}
+
+model User {
+  id              String    @id @default(cuid())
+  walletAddress   String    @unique
+  displayName     String?
+  email           String?   @unique
+  role            UserRole  @default(BUYER)
+  isAdmin         Boolean   @default(false)
+  isArbiter       Boolean   @default(false)
+  isFrozen        Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  buyerEscrows    Escrow[]  @relation("BuyerEscrows")
+  sellerEscrows   Escrow[]  @relation("SellerEscrows")
+  arbiterEscrows  Escrow[]  @relation("ArbiterEscrows")
+  disputes        Dispute[] @relation("DisputeInitiator")
+  resolutions     Dispute[] @relation("DisputeResolver")
+
+  @@index([walletAddress])
+}
+
+model Token {
+  id              String      @id @default(cuid())
+  address         String      @unique
+  chainId         Int
+  symbol          String
+  name            String
+  decimals        Int         @default(18)
+  logoUrl         String?
+  status          TokenStatus @default(ACTIVE)
+  isReflective    Boolean     @default(false)
+  hasTax          Boolean     @default(false)
+  taxBasisPoints  Int?
+  coingeckoId     String?
+  addedBy         String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  escrows         Escrow[]
+
+  @@unique([address, chainId])
+  @@index([status])
+  @@index([chainId])
+}
+
+model Escrow {
+  id                  String      @id @default(cuid())
+  onChainId           Int         @unique
+  chainId             Int
+  title               String
+  description         String?
+  buyer               User        @relation("BuyerEscrows", fields: [buyerId], references: [id])
+  buyerId             String
+  seller              User        @relation("SellerEscrows", fields: [sellerId], references: [id])
+  sellerId            String
+  arbiter             User?       @relation("ArbiterEscrows", fields: [arbiterId], references: [id])
+  arbiterId           String?
+  token               Token       @relation(fields: [tokenId], references: [id])
+  tokenId             String
+  totalAmount         String
+  fundedAmount        String?
+  releasedAmount      String      @default("0")
+  protocolFeeTotal    String      @default("0")
+  state               EscrowState @default(CREATED)
+  mode                EscrowMode  @default(LOCKED)
+  fundingMethod       FundingMethod?
+  agreementHash       String?
+  agreementText       String?
+  deadline            DateTime?
+  fundedAt            DateTime?
+  completedAt         DateTime?
+  adminApproved       Boolean     @default(false)
+  adminApprovedBy     String?
+  adminApprovedAt     DateTime?
+  adminNotes          String?
+  depositWalletAddr   String?
+  depositWalletKey    String?
+  depositConfirmed    Boolean     @default(false)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  milestones          Milestone[]
+  transactions        Transaction[]
+  disputes            Dispute[]
+
+  @@index([state])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([chainId])
+}
+
+model Milestone {
+  id              String   @id @default(cuid())
+  escrow          Escrow   @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+  escrowId        String
+  index           Int
+  description     String
+  amount          String
+  released        Boolean  @default(false)
+  disputed        Boolean  @default(false)
+  buyerApproved   Boolean  @default(false)
+  sellerDelivered Boolean  @default(false)
+  releasedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  disputes        Dispute[]
+
+  @@unique([escrowId, index])
+  @@index([escrowId])
+}
+
+model Transaction {
+  id              String          @id @default(cuid())
+  escrow          Escrow          @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+  escrowId        String
+  txHash          String          @unique
+  type            TransactionType
+  fromAddress     String
+  toAddress       String
+  amount          String
+  feeAmount       String?
+  chainId         Int
+  blockNumber     Int?
+  status          String          @default("PENDING")
+  createdAt       DateTime        @default(now())
+
+  @@index([escrowId])
+  @@index([txHash])
+  @@index([type])
+}
+
+model Dispute {
+  id                String          @id @default(cuid())
+  escrow            Escrow          @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+  escrowId          String
+  milestone         Milestone       @relation(fields: [milestoneId], references: [id])
+  milestoneId       String
+  initiator         User            @relation("DisputeInitiator", fields: [initiatorId], references: [id])
+  initiatorId       String
+  resolver          User?           @relation("DisputeResolver", fields: [resolverId], references: [id])
+  resolverId        String?
+  reason            String
+  evidence          String?
+  outcome           DisputeOutcome  @default(PENDING)
+  buyerShareBps     Int?
+  sellerShareBps    Int?
+  resolvedAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([escrowId])
+  @@index([outcome])
+}
+
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  adminId     String
+  action      String
+  entityType  String
+  entityId    String
+  details     Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@index([adminId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model ProtocolConfig {
+  id                String   @id @default(cuid())
+  key               String   @unique
+  value             String
+  description       String?
+  updatedBy         String?
+  updatedAt         DateTime @updatedAt
+}
