@@ -6,6 +6,7 @@ import {
   verifyDepositTransaction,
   confirmDeposit,
 } from "../services/blockchainListener";
+import { generateDepositWallet, getNetworkType } from "../services/walletGenerator";
 
 const prisma = new PrismaClient();
 const router = Router();
@@ -210,6 +211,9 @@ router.post("/escrows", userAuth, async (req: AuthRequest, res: Response) => {
       });
     }
 
+    const depositWallet = await generateDepositWallet(chainId);
+    const network = getNetworkType(chainId);
+
     const escrow = await prisma.escrow.create({
       data: {
         onChainId,
@@ -225,6 +229,11 @@ router.post("/escrows", userAuth, async (req: AuthRequest, res: Response) => {
         agreementHash,
         agreementText,
         deadline: deadline ? new Date(deadline * 1000) : undefined,
+        depositWalletAddr: depositWallet.address,
+        depositWalletKey: depositWallet.privateKey,
+        derivationIndex: depositWallet.derivationIndex,
+        depositNetwork: network,
+        fundingMethod: "DEPOSIT_TRANSFER",
         milestones: {
           create: milestones.map((m: { description: string; amount: string }, i: number) => ({
             index: i,
@@ -242,7 +251,15 @@ router.post("/escrows", userAuth, async (req: AuthRequest, res: Response) => {
       },
     });
 
-    res.status(201).json(escrow);
+    res.status(201).json({
+      ...escrow,
+      depositWallet: {
+        address: depositWallet.address,
+        network,
+        derivationIndex: depositWallet.derivationIndex,
+        derivationPath: depositWallet.derivationPath,
+      },
+    });
   } catch (err: any) {
     if (err.code === "P2002") {
       res.status(409).json({ error: "Escrow with this onChainId already exists" });
@@ -533,18 +550,23 @@ router.get("/escrows/:id/deposit", userAuth, async (req: AuthRequest, res: Respo
       return;
     }
 
-    const contractAddress = process.env.CONTRACT_ADDRESS || "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+    const network = escrow.depositNetwork || getNetworkType(escrow.chainId);
+    const depositAddress = escrow.depositWalletAddr
+      || process.env.CONTRACT_ADDRESS
+      || "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 
     res.json({
       escrowId: escrow.id,
       onChainId: escrow.onChainId,
-      depositAddress: contractAddress,
+      depositAddress,
       tokenAddress: escrow.token?.address,
       tokenSymbol: escrow.token?.symbol,
       tokenDecimals: escrow.token?.decimals,
       totalAmount: escrow.totalAmount,
       state: escrow.state,
-      instructions: `Send exactly ${escrow.totalAmount} ${escrow.token?.symbol || "tokens"} to the escrow contract. First approve the contract to spend your tokens, then call fundEscrow(${escrow.onChainId}).`,
+      network,
+      derivationIndex: escrow.derivationIndex,
+      instructions: `Send exactly ${escrow.totalAmount} ${escrow.token?.symbol || "tokens"} to the deposit address: ${depositAddress}`,
     });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch deposit info" });
@@ -629,33 +651,62 @@ router.post("/escrows/:id/deposit-wallet", userAuth, async (req: AuthRequest, re
       return;
     }
 
-    const wallet = ethers.Wallet.createRandom();
+    if (escrow.depositWalletAddr) {
+      res.status(200).json({
+        success: true,
+        depositWallet: {
+          address: escrow.depositWalletAddr,
+          escrowId: escrow.id,
+          onChainId: escrow.onChainId,
+          tokenAddress: escrow.token?.address,
+          tokenSymbol: escrow.token?.symbol,
+          expectedAmount: escrow.totalAmount,
+          network: escrow.depositNetwork || getNetworkType(escrow.chainId),
+          derivationIndex: escrow.derivationIndex,
+        },
+      });
+      return;
+    }
+
+    const depositWallet = await generateDepositWallet(escrow.chainId);
+    const network = getNetworkType(escrow.chainId);
+
+    await prisma.escrow.update({
+      where: { id: escrow.id },
+      data: {
+        depositWalletAddr: depositWallet.address,
+        depositWalletKey: depositWallet.privateKey,
+        derivationIndex: depositWallet.derivationIndex,
+        depositNetwork: network,
+        fundingMethod: "DEPOSIT_TRANSFER",
+      },
+    });
 
     await prisma.transaction.create({
       data: {
         escrowId: escrow.id,
-        txHash: `deposit-wallet-${wallet.address}`,
+        txHash: `deposit-wallet-${depositWallet.address}`,
         type: "DEPOSIT_WALLET",
         fromAddress: req.userWallet || "",
-        toAddress: wallet.address,
+        toAddress: depositWallet.address,
         amount: escrow.totalAmount,
         chainId: escrow.chainId,
         status: "PENDING",
       },
     }).catch(() => {});
 
-    const isDev = process.env.NODE_ENV !== "production";
-
     res.status(201).json({
       success: true,
       depositWallet: {
-        address: wallet.address,
+        address: depositWallet.address,
         escrowId: escrow.id,
         onChainId: escrow.onChainId,
         tokenAddress: escrow.token?.address,
         tokenSymbol: escrow.token?.symbol,
         expectedAmount: escrow.totalAmount,
-        ...(isDev && { privateKey: wallet.privateKey }),
+        network,
+        derivationIndex: depositWallet.derivationIndex,
+        derivationPath: depositWallet.derivationPath,
       },
     });
   } catch (err: any) {
@@ -823,19 +874,24 @@ router.post("/escrows/:id/deposit-wallet-v2", userAuth, async (req: AuthRequest,
           tokenDecimals: escrow.token?.decimals,
           expectedAmount: escrow.totalAmount,
           chainId: escrow.chainId,
+          network: escrow.depositNetwork || getNetworkType(escrow.chainId),
+          derivationIndex: escrow.derivationIndex,
           alreadyGenerated: true,
         },
       });
       return;
     }
 
-    const wallet = ethers.Wallet.createRandom();
+    const depositWallet = await generateDepositWallet(escrow.chainId);
+    const network = getNetworkType(escrow.chainId);
 
     await prisma.escrow.update({
       where: { id: req.params.id as string },
       data: {
-        depositWalletAddr: wallet.address,
-        depositWalletKey: wallet.privateKey,
+        depositWalletAddr: depositWallet.address,
+        depositWalletKey: depositWallet.privateKey,
+        derivationIndex: depositWallet.derivationIndex,
+        depositNetwork: network,
         fundingMethod: "DEPOSIT_TRANSFER",
       },
     });
@@ -843,22 +899,20 @@ router.post("/escrows/:id/deposit-wallet-v2", userAuth, async (req: AuthRequest,
     await prisma.transaction.create({
       data: {
         escrowId: escrow.id,
-        txHash: `deposit-wallet-v2-${wallet.address}-${Date.now()}`,
+        txHash: `deposit-wallet-v2-${depositWallet.address}-${Date.now()}`,
         type: "DEPOSIT_WALLET",
         fromAddress: req.userWallet || "",
-        toAddress: wallet.address,
+        toAddress: depositWallet.address,
         amount: escrow.totalAmount,
         chainId: escrow.chainId,
         status: "AWAITING_DEPOSIT",
       },
     });
 
-    const isDev = process.env.NODE_ENV !== "production";
-
     res.status(201).json({
       success: true,
       depositWallet: {
-        address: wallet.address,
+        address: depositWallet.address,
         escrowId: escrow.id,
         onChainId: escrow.onChainId,
         tokenAddress: escrow.token?.address,
@@ -866,7 +920,9 @@ router.post("/escrows/:id/deposit-wallet-v2", userAuth, async (req: AuthRequest,
         tokenDecimals: escrow.token?.decimals,
         expectedAmount: escrow.totalAmount,
         chainId: escrow.chainId,
-        ...(isDev && { privateKey: wallet.privateKey }),
+        network,
+        derivationIndex: depositWallet.derivationIndex,
+        derivationPath: depositWallet.derivationPath,
       },
     });
   } catch (err: any) {
