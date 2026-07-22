@@ -1,464 +1,531 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { useAccount, useSignMessage } from "wagmi";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-import {
-  Shield,
-  Plus,
-  Wallet,
-  Loader2,
-  Copy,
-  Check,
-  Clock,
-  AlertCircle,
-  BarChart3,
-  ArrowRightLeft,
-  Filter,
-  RefreshCw,
-  PackageCheck,
-  ShieldCheck,
-  Gavel,
-  RotateCcw,
-  ExternalLink,
-  ChevronRight,
-} from "lucide-react";
-import DexSwapWidget from "@/components/DexSwapWidget";
+import React, { useState, useEffect, useCallback } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
-const STATE_LABELS: Record<string, string> = {
-  CREATED: "Created", FUNDED: "Funded", ACTIVE: "Active",
-  COMPLETED: "Completed", DISPUTED: "Disputed", REFUNDED: "Refunded",
-};
+const CHAINS = [
+  { id: "ETHEREUM", name: "Ethereum", icon: "🔷", chainId: 1, nativeCurrency: "ETH" },
+  { id: "BNB_CHAIN", name: "BNB Chain", icon: "🟡", chainId: 56, nativeCurrency: "BNB" },
+  { id: "POLYGON", name: "Polygon", icon: "🟣", chainId: 137, nativeCurrency: "MATIC" },
+  { id: "ARBITRUM", name: "Arbitrum", icon: "🔵", chainId: 42161, nativeCurrency: "ETH" },
+  { id: "BASE", name: "Base", icon: "🔷", chainId: 8453, nativeCurrency: "ETH" },
+  { id: "SOLANA", name: "Solana", icon: "☀️", chainId: 0, nativeCurrency: "SOL" },
+  { id: "TRON", name: "TRON", icon: "🔴", chainId: 0, nativeCurrency: "TRX" },
+  { id: "AVALANCHE", name: "Avalanche", icon: "🔺", chainId: 43114, nativeCurrency: "AVAX" },
+];
+
 const STATE_COLORS: Record<string, string> = {
-  CREATED: "bg-slate-500/20 text-slate-300",
-  FUNDED: "bg-blue-500/20 text-blue-300",
-  ACTIVE: "bg-emerald-500/20 text-emerald-300",
-  COMPLETED: "bg-green-500/20 text-green-300",
-  DISPUTED: "bg-red-500/20 text-red-300",
-  REFUNDED: "bg-amber-500/20 text-amber-300",
+  CREATED: "bg-gray-500/20 text-gray-400",
+  FUNDED: "bg-yellow-500/20 text-yellow-400",
+  ACTIVE: "bg-blue-500/20 text-blue-400",
+  COMPLETED: "bg-green-500/20 text-green-400",
+  DISPUTED: "bg-red-500/20 text-red-400",
+  REFUNDED: "bg-orange-500/20 text-orange-400",
 };
 
-interface Escrow {
-  id: string;
-  onChainId: number;
-  title: string;
-  description: string;
-  state: string;
-  mode: string;
-  totalAmount: string;
-  fundedAmount: string | null;
-  releasedAmount: string | null;
-  deadline: string | null;
-  createdAt: string;
-  buyer: { walletAddress: string; displayName: string | null };
-  seller: { walletAddress: string; displayName: string | null };
-  token: { symbol: string; decimals: number } | null;
-  milestones: { released: boolean }[];
-}
-
-interface GeneratedWallet {
-  address: string;
-  label: string;
-  createdAt: string;
-  privateKey?: string;
-  mnemonic?: string;
-}
+const NETWORK_ICONS: Record<string, string> = {
+  ETHEREUM: "🔷", BNB_CHAIN: "🟡", POLYGON: "🟣", ARBITRUM: "🔵",
+  BASE: "🔷", AVALANCHE: "🔺", OPTIMISM: "🔴", FANTOM: "👻",
+  SOLANA: "☀️", TRON: "🔴",
+};
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const { address, isConnected } = useAccount();
-  const { signMessageAsync } = useSignMessage();
-
-  const [jwt, setJwt] = useState<string | null>(null);
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [authError, setAuthError] = useState("");
-
-  const [activeTab, setActiveTab] = useState<"escrows" | "wallets" | "activity" | "swap">("escrows");
-  const [roleFilter, setRoleFilter] = useState("");
-  const [stateFilter, setStateFilter] = useState("");
-  const [escrows, setEscrows] = useState<Escrow[]>([]);
-  const [totalEscrows, setTotalEscrows] = useState(0);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
-
-  const [wallets, setWallets] = useState<GeneratedWallet[]>([]);
-  const [generatingWallet, setGeneratingWallet] = useState(false);
-  const [copied, setCopied] = useState("");
+  const [token, setToken] = useState("");
+  const [user, setUser] = useState<any>(null);
+  const [escrows, setEscrows] = useState<any[]>([]);
+  const [wallets, setWallets] = useState<any[]>([]);
+  const [tab, setTab] = useState<"escrows" | "wallets" | "holdings">("escrows");
+  const [filter, setFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const [showAddWallet, setShowAddWallet] = useState(false);
+  const [newWalletAddress, setNewWalletAddress] = useState("");
+  const [newWalletNetwork, setNewWalletNetwork] = useState("BNB_CHAIN");
+  const [newWalletLabel, setNewWalletLabel] = useState("");
 
   useEffect(() => {
-    const stored = localStorage.getItem("surveydeal_jwt");
-    if (stored) setJwt(stored);
+    const stored = localStorage.getItem("user_token");
+    if (stored) setToken(stored);
   }, []);
 
-  const authenticate = useCallback(async () => {
-    if (!address || jwt || isAuthenticating) return;
-    setIsAuthenticating(true);
-    setAuthError("");
-    try {
-      const message = `Sign in to Surveydeal\nWallet: ${address}\nTimestamp: ${Date.now()}`;
-      const signature = await signMessageAsync({ message });
-      const res = await fetch(`${API}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress: address, signature, message }),
-      });
-      if (!res.ok) throw new Error("Authentication failed");
-      const data = await res.json();
-      localStorage.setItem("surveydeal_jwt", data.token);
-      setJwt(data.token);
-    } catch (err: any) {
-      setAuthError(err.message || "Failed to sign in");
-    } finally {
-      setIsAuthenticating(false);
-    }
-  }, [address, jwt, isAuthenticating, signMessageAsync]);
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
-  useEffect(() => {
-    if (isConnected && address && !jwt && !isAuthenticating) {
-      authenticate();
-    }
-  }, [isConnected, address, jwt, isAuthenticating, authenticate]);
-
-  const fetchEscrows = useCallback(async () => {
-    if (!jwt) return;
+  const loadData = useCallback(async () => {
+    if (!token) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: "12" });
-      if (roleFilter) params.set("role", roleFilter);
-      if (stateFilter) params.set("state", stateFilter);
-      const res = await fetch(`${API}/escrows?${params}`, {
-        headers: { Authorization: `Bearer ${jwt}` },
-      });
-      if (res.status === 401) {
-        localStorage.removeItem("surveydeal_jwt");
-        setJwt(null);
-        return;
-      }
-      const data = await res.json();
-      setEscrows(data.escrows || []);
-      setTotalEscrows(data.pagination?.total || 0);
-    } catch {} finally {
-      setLoading(false);
+      const [userRes, escrowsRes, walletsRes] = await Promise.all([
+        fetch(`${API}/auth/me`, { headers }),
+        fetch(`${API}/escrows?limit=50`, { headers }),
+        fetch(`${API}/wallets`, { headers }),
+      ]);
+
+      const userData = await userRes.json();
+      if (!userData.error) setUser(userData);
+
+      const escrowsData = await escrowsRes.json();
+      setEscrows(escrowsData.escrows || []);
+
+      const walletsData = await walletsRes.json();
+      setWallets(Array.isArray(walletsData) ? walletsData : []);
+    } catch (err) {
+      console.error("Failed to load dashboard data", err);
     }
-  }, [jwt, page, roleFilter, stateFilter]);
+    setLoading(false);
+  }, [token]);
 
   useEffect(() => {
-    if (jwt) fetchEscrows();
-  }, [jwt, fetchEscrows]);
+    loadData();
+  }, [loadData]);
 
-  async function generateWallet() {
-    if (!jwt) return;
-    setGeneratingWallet(true);
+  // Add wallet
+  const addWallet = async () => {
+    if (!newWalletAddress) return;
     try {
-      const res = await fetch(`${API}/wallets/generate`, {
+      const res = await fetch(`${API}/wallets`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
-        body: JSON.stringify({ label: `Wallet ${wallets.length + 1}` }),
+        headers,
+        body: JSON.stringify({
+          address: newWalletAddress,
+          network: newWalletNetwork,
+          label: newWalletLabel || undefined,
+        }),
       });
       const data = await res.json();
-      if (data.wallet) {
-        setWallets((prev) => [data.wallet, ...prev]);
+      if (data.id) {
+        setWallets([...wallets, data]);
+        setNewWalletAddress("");
+        setNewWalletLabel("");
+        setShowAddWallet(false);
+      } else {
+        alert(data.error || "Failed to add wallet");
       }
-    } catch {} finally {
-      setGeneratingWallet(false);
+    } catch (err) {
+      alert("Network error");
     }
-  }
-
-  function copyText(text: string) {
-    navigator.clipboard.writeText(text);
-    setCopied(text);
-    setTimeout(() => setCopied(""), 2000);
-  }
-
-  function getRole(escrow: Escrow): string {
-    if (!address) return "";
-    const addr = address.toLowerCase();
-    if (escrow.buyer?.walletAddress?.toLowerCase() === addr) return "Buyer";
-    if (escrow.seller?.walletAddress?.toLowerCase() === addr) return "Seller";
-    return "Arbiter";
-  }
-
-  const stats = {
-    total: totalEscrows,
-    active: escrows.filter((e) => e.state === "ACTIVE").length,
-    disputed: escrows.filter((e) => e.state === "DISPUTED").length,
-    completed: escrows.filter((e) => e.state === "COMPLETED").length,
   };
 
-  return (
-    <div className="min-h-screen">
-      <nav className="sticky top-0 z-50 backdrop-blur-xl bg-[#080c14]/80 border-b border-white/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
-          <a href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-              <Shield className="w-4 h-4 text-white" />
-            </div>
-            <span className="text-lg font-bold text-white">Survey<span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-400">deal</span></span>
+  // Delete wallet
+  const deleteWallet = async (walletId: string) => {
+    if (!confirm("Remove this wallet?")) return;
+    try {
+      await fetch(`${API}/wallets/${walletId}`, { method: "DELETE", headers });
+      setWallets(wallets.filter((w) => w.id !== walletId));
+    } catch (err) {
+      alert("Failed to delete wallet");
+    }
+  };
+
+  // Set preferred wallet
+  const setPreferred = async (walletId: string) => {
+    try {
+      await fetch(`${API}/wallets/${walletId}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ isPreferred: true }),
+      });
+      loadData();
+    } catch (err) {
+      alert("Failed to update wallet");
+    }
+  };
+
+  // Filter escrows
+  const filteredEscrows = escrows.filter((e) => {
+    if (filter === "all") return true;
+    if (filter === "buying") return e.buyerId === user?.id;
+    if (filter === "selling") return e.sellerId === user?.id;
+    if (filter === "active") return ["ACTIVE", "FUNDED"].includes(e.state);
+    if (filter === "completed") return e.state === "COMPLETED";
+    if (filter === "disputed") return e.state === "DISPUTED";
+    return true;
+  });
+
+  // Calculate holdings
+  const holdings = escrows
+    .filter((e) => ["ACTIVE", "FUNDED", "CREATED"].includes(e.state))
+    .reduce((acc: Record<string, any>, e) => {
+      const key = `${e.token?.symbol || "UNKNOWN"}-${e.network}`;
+      if (!acc[key]) {
+        acc[key] = {
+          symbol: e.token?.symbol || "UNKNOWN",
+          network: e.network,
+          totalAmount: BigInt(0),
+          escrowCount: 0,
+          asBuyer: 0,
+          asSeller: 0,
+        };
+      }
+      acc[key].totalAmount += BigInt(e.totalAmount || "0");
+      acc[key].escrowCount++;
+      if (e.buyerId === user?.id) acc[key].asBuyer++;
+      if (e.sellerId === user?.id) acc[key].asSeller++;
+      return acc;
+    }, {});
+
+  if (!token) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-400 text-lg mb-4">Please connect your wallet first</p>
+          <a href="/" className="text-blue-400 hover:text-blue-300">
+            ← Go to Homepage
           </a>
-          <div className="flex items-center gap-4">
-            <a href="/escrow/create" className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2">
-              <Plus className="w-4 h-4" /> New Escrow
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-white">
+      {/* Header */}
+      <header className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-xl sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-lg font-bold">
+              SD
+            </div>
+            <div>
+              <h1 className="text-lg font-bold">Dashboard</h1>
+              {user && (
+                <p className="text-xs text-gray-400">
+                  {user.displayName || user.walletAddress?.slice(0, 10) + "..."}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <a
+              href="/escrow/create"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition"
+            >
+              + New Escrow
             </a>
-            <ConnectButton />
+            <a
+              href="/admin"
+              className="text-sm text-gray-400 hover:text-white transition"
+            >
+              Admin
+            </a>
           </div>
         </div>
-      </nav>
+      </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-2xl font-bold text-white mb-6">Dashboard</h1>
-
-        {/* Connect/Auth Prompt */}
-        {!isConnected && (
-          <div className="mb-8 p-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center mx-auto mb-4">
-              <Wallet className="w-7 h-7 text-white" />
-            </div>
-            <h2 className="text-lg font-semibold text-white mb-2">Connect Your Wallet</h2>
-            <p className="text-slate-400 text-sm mb-4">Connect your wallet to view your escrows, generate wallets, and manage deals.</p>
-            <ConnectButton />
-          </div>
-        )}
-
-        {isConnected && !jwt && (
-          <div className="mb-8 p-6 rounded-2xl border border-amber-500/20 bg-amber-500/5 text-center">
-            {isAuthenticating ? (
-              <>
-                <Loader2 className="w-8 h-8 animate-spin text-emerald-400 mx-auto mb-3" />
-                <h2 className="text-lg font-semibold text-white mb-1">Signing In...</h2>
-                <p className="text-sm text-slate-400">Please sign the message in your wallet to authenticate.</p>
-              </>
-            ) : (
-              <>
-                <AlertCircle className="w-8 h-8 text-amber-400 mx-auto mb-3" />
-                <h2 className="text-lg font-semibold text-white mb-1">Authentication Required</h2>
-                <p className="text-sm text-slate-400 mb-4">{authError || "Sign a message with your wallet to access your dashboard."}</p>
-                <button onClick={authenticate} className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium hover:opacity-90 transition-opacity">
-                  Sign In with Wallet
-                </button>
-              </>
-            )}
-          </div>
-        )}
-
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           {[
-            { label: "Total Escrows", value: stats.total, icon: ArrowRightLeft, color: "emerald" },
-            { label: "Active Deals", value: stats.active, icon: PackageCheck, color: "blue" },
-            { label: "Disputed", value: stats.disputed, icon: Gavel, color: "red" },
-            { label: "Completed", value: stats.completed, icon: ShieldCheck, color: "green" },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="p-4 rounded-xl border border-white/5 bg-white/[0.02]">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-slate-500 uppercase tracking-wider">{label}</span>
-                <Icon className={`w-4 h-4 text-${color}-400`} />
-              </div>
-              <span className="text-2xl font-bold text-white">{value}</span>
+            {
+              label: "Total Escrows",
+              value: escrows.length,
+              color: "blue",
+            },
+            {
+              label: "Active",
+              value: escrows.filter((e) => ["ACTIVE", "FUNDED"].includes(e.state)).length,
+              color: "green",
+            },
+            {
+              label: "Disputed",
+              value: escrows.filter((e) => e.state === "DISPUTED").length,
+              color: "red",
+            },
+            {
+              label: "Completed",
+              value: escrows.filter((e) => e.state === "COMPLETED").length,
+              color: "emerald",
+            },
+          ].map((s) => (
+            <div key={s.label} className="bg-gray-900 rounded-xl border border-gray-800 p-5">
+              <p className="text-sm text-gray-400">{s.label}</p>
+              <p className={`text-2xl font-bold mt-1 text-${s.color}-400`}>{s.value}</p>
             </div>
           ))}
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 mb-6 p-1 rounded-lg bg-white/[0.03] border border-white/5 w-fit">
-          {(["escrows", "wallets", "swap", "activity"] as const).map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors capitalize ${activeTab === tab ? "bg-emerald-500/20 text-emerald-400" : "text-slate-400 hover:text-white"}`}>
-              {tab === "escrows" ? "My Escrows" : tab === "wallets" ? "My Wallets" : tab === "swap" ? "DEX Swap" : "Activity"}
+        {/* Tab Navigation */}
+        <div className="flex gap-1 mb-6 bg-gray-900 rounded-xl p-1 w-fit">
+          {[
+            { key: "escrows", label: "📋 My Escrows" },
+            { key: "wallets", label: "💳 Wallets" },
+            { key: "holdings", label: "🏦 Escrow Holdings" },
+          ].map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key as any)}
+              className={`px-5 py-2.5 rounded-lg text-sm font-medium transition ${
+                tab === t.key
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800"
+              }`}
+            >
+              {t.label}
             </button>
           ))}
         </div>
 
-        {/* Escrows Tab */}
-        {activeTab === "escrows" && (
-          <div>
-            {/* Filters */}
-            <div className="flex flex-wrap gap-3 mb-6">
-              <select value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }} className="px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-slate-300 focus:border-emerald-500/50 focus:outline-none">
-                <option value="">All Roles</option>
-                <option value="buyer">Buyer</option>
-                <option value="seller">Seller</option>
-                <option value="arbiter">Arbiter</option>
-              </select>
-              <select value={stateFilter} onChange={(e) => { setStateFilter(e.target.value); setPage(1); }} className="px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-slate-300 focus:border-emerald-500/50 focus:outline-none">
-                <option value="">All States</option>
-                {Object.keys(STATE_LABELS).map((s) => (
-                  <option key={s} value={s}>{STATE_LABELS[s]}</option>
-                ))}
-              </select>
-              <button onClick={fetchEscrows} className="px-3 py-2 rounded-lg border border-white/10 text-slate-400 hover:bg-white/5 transition-colors">
-                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-              </button>
+        {/* ── ESCROWS TAB ── */}
+        {tab === "escrows" && (
+          <div className="space-y-4">
+            {/* Filter */}
+            <div className="flex gap-2 flex-wrap">
+              {[
+                { key: "all", label: "All" },
+                { key: "buying", label: "Buying" },
+                { key: "selling", label: "Selling" },
+                { key: "active", label: "Active" },
+                { key: "completed", label: "Completed" },
+                { key: "disputed", label: "Disputed" },
+              ].map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setFilter(f.key)}
+                  className={`text-sm px-4 py-2 rounded-lg transition ${
+                    filter === f.key
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-800 text-gray-400 hover:text-white"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
             </div>
 
+            {/* Escrow List */}
             {loading ? (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
-              </div>
-            ) : escrows.length === 0 ? (
-              <div className="text-center py-20">
-                <ArrowRightLeft className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-white mb-2">No Escrows Yet</h3>
-                <p className="text-slate-400 mb-6">Create your first escrow deal to get started.</p>
-                <a href="/escrow/create" className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium hover:opacity-90 transition-opacity">
-                  <Plus className="w-4 h-4" /> Create Escrow
+              <p className="text-gray-400">Loading...</p>
+            ) : filteredEscrows.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-400 text-lg">No escrows found</p>
+                <a
+                  href="/escrow/create"
+                  className="text-blue-400 hover:text-blue-300 text-sm mt-2 inline-block"
+                >
+                  Create your first escrow →
                 </a>
               </div>
             ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {escrows.map((escrow) => {
-                  const role = getRole(escrow);
-                  const releasedMs = escrow.milestones?.filter((m) => m.released).length || 0;
-                  const totalMs = escrow.milestones?.length || 0;
-                  const counterparty = role === "Buyer" ? escrow.seller : escrow.buyer;
-
-                  return (
-                    <button key={escrow.id} onClick={() => router.push(`/escrow/${escrow.onChainId}`)} className="p-5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] hover:border-emerald-500/20 transition-all text-left group">
-                      <div className="flex items-center justify-between mb-3">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATE_COLORS[escrow.state]}`}>
-                          {STATE_LABELS[escrow.state]}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded text-xs ${role === "Buyer" ? "bg-purple-500/10 text-purple-400" : role === "Seller" ? "bg-orange-500/10 text-orange-400" : "bg-pink-500/10 text-pink-400"}`}>
-                          {role}
-                        </span>
-                      </div>
-                      <h3 className="font-semibold text-white mb-1 truncate group-hover:text-emerald-400 transition-colors">
-                        {escrow.title || `Escrow #${escrow.onChainId}`}
-                      </h3>
-                      <p className="text-sm text-slate-500 mb-3">
-                        with {counterparty?.walletAddress ? `${counterparty.walletAddress.slice(0, 6)}...${counterparty.walletAddress.slice(-4)}` : "Unknown"}
+              filteredEscrows.map((escrow) => (
+                <a
+                  key={escrow.id}
+                  href={`/escrow/${escrow.id}`}
+                  className="block bg-gray-900 rounded-xl border border-gray-800 p-5 hover:border-gray-600 transition"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-medium text-white">{escrow.title}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        #{escrow.onChainId} • {escrow.token?.symbol} • {NETWORK_ICONS[escrow.network] || ""} {escrow.network}
                       </p>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-400">
-                          {escrow.token?.symbol || "TOKEN"} {escrow.totalAmount ? (Number(escrow.totalAmount) / 1e18).toFixed(2) : "0"}
-                        </span>
-                        <span className="text-slate-500">{releasedMs}/{totalMs} milestones</span>
-                      </div>
-                      {totalMs > 0 && (
-                        <div className="w-full h-1 rounded-full bg-white/5 mt-3 overflow-hidden">
-                          <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${(releasedMs / totalMs) * 100}%` }} />
-                        </div>
-                      )}
-                      {escrow.deadline && (
-                        <div className="flex items-center gap-1 mt-2 text-xs text-slate-500">
-                          <Clock className="w-3 h-3" />
-                          {new Date(escrow.deadline).toLocaleDateString()}
-                        </div>
-                      )}
+                    </div>
+                    <span className={`text-xs px-3 py-1 rounded-full ${STATE_COLORS[escrow.state]}`}>
+                      {escrow.state}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-4 mt-4">
+                    <div>
+                      <p className="text-xs text-gray-500">
+                        {escrow.buyerId === user?.id ? "Seller" : "Buyer"}
+                      </p>
+                      <p className="text-xs text-gray-300 font-mono">
+                        {escrow.buyerId === user?.id
+                          ? escrow.seller?.walletAddress?.slice(0, 8) + "..."
+                          : escrow.buyer?.walletAddress?.slice(0, 8) + "..."}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Amount</p>
+                      <p className="text-sm font-medium text-white">{escrow.totalAmount}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Role</p>
+                      <p className="text-sm text-white">
+                        {escrow.buyerId === user?.id ? "Buyer" : escrow.sellerId === user?.id ? "Seller" : "Arbiter"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Milestones</p>
+                      <p className="text-sm text-white">
+                        {escrow.milestones?.filter((m: any) => m.released).length || 0}/{escrow.milestones?.length || 0}
+                      </p>
+                    </div>
+                  </div>
+                </a>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* ── WALLETS TAB ── */}
+        {tab === "wallets" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Connected Wallets</h3>
+              <button
+                onClick={() => setShowAddWallet(!showAddWallet)}
+                className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition"
+              >
+                + Add Wallet
+              </button>
+            </div>
+
+            {/* Add Wallet Form */}
+            {showAddWallet && (
+              <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
+                <h4 className="text-sm font-medium text-gray-300 mb-3">Add New Wallet</h4>
+                <div className="space-y-3">
+                  <select
+                    value={newWalletNetwork}
+                    onChange={(e) => setNewWalletNetwork(e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm"
+                  >
+                    {CHAINS.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.icon} {c.name} ({c.nativeCurrency})
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Wallet address (0x...)"
+                    value={newWalletAddress}
+                    onChange={(e) => setNewWalletAddress(e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm font-mono"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Label (optional, e.g. 'Trading Wallet')"
+                    value={newWalletLabel}
+                    onChange={(e) => setNewWalletLabel(e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={addWallet}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2.5 rounded-lg transition"
+                    >
+                      Add Wallet
                     </button>
-                  );
-                })}
+                    <button
+                      onClick={() => setShowAddWallet(false)}
+                      className="px-4 bg-gray-800 hover:bg-gray-700 text-white text-sm py-2.5 rounded-lg transition"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* Pagination */}
-            {totalEscrows > 12 && (
-              <div className="flex items-center justify-center gap-2 mt-8">
-                <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1} className="px-3 py-1.5 rounded-lg border border-white/10 text-sm text-slate-400 hover:bg-white/5 disabled:opacity-30">
-                  Previous
-                </button>
-                <span className="text-sm text-slate-500">Page {page}</span>
-                <button onClick={() => setPage(page + 1)} disabled={escrows.length < 12} className="px-3 py-1.5 rounded-lg border border-white/10 text-sm text-slate-400 hover:bg-white/5 disabled:opacity-30">
-                  Next
-                </button>
+            {/* Wallet List */}
+            {wallets.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-400 text-lg">No wallets connected</p>
+                <p className="text-gray-500 text-sm mt-1">Add a wallet to start trading</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {wallets.map((w) => {
+                  const chain = CHAINS.find((c) => c.id === w.network);
+                  return (
+                    <div
+                      key={w.id}
+                      className="flex items-center justify-between p-4 bg-gray-900 rounded-xl border border-gray-800"
+                    >
+                      <div className="flex items-center gap-4">
+                        <span className="text-2xl">{chain?.icon || "🔗"}</span>
+                        <div>
+                          <p className="text-sm text-white font-mono">
+                            {w.address.slice(0, 8)}...{w.address.slice(-6)}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {chain?.name || w.network} {w.label ? `• ${w.label}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {w.isPreferred && (
+                          <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full">
+                            ⭐ Preferred
+                          </span>
+                        )}
+                        {!w.isPreferred && (
+                          <button
+                            onClick={() => setPreferred(w.id)}
+                            className="text-xs text-gray-400 hover:text-white transition"
+                          >
+                            Set Preferred
+                          </button>
+                        )}
+                        <button
+                          onClick={() => deleteWallet(w.id)}
+                          className="text-xs text-red-400 hover:text-red-300 transition"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         )}
 
-        {/* Wallets Tab */}
-        {activeTab === "wallets" && (
-          <div>
-            <div className="p-5 rounded-xl border border-white/5 bg-white/[0.02] mb-6">
-              <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-emerald-400" /> Connected Wallet
-              </h3>
-              <div className="flex items-center gap-2">
-                <code className="text-sm text-emerald-400 font-mono">{address}</code>
-                <button onClick={() => copyText(address!)} className="p-1 rounded hover:bg-white/5 transition-colors">
-                  {copied === address ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-500" />}
-                </button>
-              </div>
-            </div>
+        {/* ── HOLDINGS TAB ── */}
+        {tab === "holdings" && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Escrow Holdings</h3>
+            <p className="text-sm text-gray-400">
+              Tokens currently held in escrow. These funds are locked until the escrow is completed or refunded.
+            </p>
 
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-white">Generated Wallets</h3>
-              <button onClick={generateWallet} disabled={generatingWallet} className="px-4 py-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors text-sm flex items-center gap-2 disabled:opacity-50">
-                {generatingWallet ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                Generate Wallet
-              </button>
-            </div>
-
-            {wallets.length === 0 ? (
-              <div className="text-center py-12 text-slate-500">
-                <Wallet className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">No wallets generated yet. Click &quot;Generate Wallet&quot; to create one.</p>
+            {Object.keys(holdings).length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-400 text-lg">No tokens in escrow</p>
+                <p className="text-gray-500 text-sm mt-1">Create an escrow to start holding tokens</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {wallets.map((w, i) => (
-                  <div key={i} className="p-4 rounded-xl border border-white/5 bg-white/[0.02]">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-white">{w.label}</span>
-                      <span className="text-xs text-slate-500">{new Date(w.createdAt).toLocaleDateString()}</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {Object.values(holdings).map((h: any) => (
+                  <div
+                    key={`${h.symbol}-${h.network}`}
+                    className="bg-gray-900 rounded-xl border border-gray-800 p-5"
+                  >
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-2xl">{NETWORK_ICONS[h.network] || "🔗"}</span>
+                      <div>
+                        <p className="font-medium text-white">{h.symbol}</p>
+                        <p className="text-xs text-gray-400">{h.network}</p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <code className="text-xs text-emerald-400 font-mono break-all">{w.address}</code>
-                      <button onClick={() => copyText(w.address)} className="p-1 rounded hover:bg-white/5 transition-colors shrink-0">
-                        {copied === w.address ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-500" />}
-                      </button>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-400">Total Held</span>
+                        <span className="text-sm font-medium text-white">
+                          {h.totalAmount.toString()} {h.symbol}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-400">Escrows</span>
+                        <span className="text-sm text-white">{h.escrowCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-400">As Buyer</span>
+                        <span className="text-sm text-blue-400">{h.asBuyer}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-400">As Seller</span>
+                        <span className="text-sm text-green-400">{h.asSeller}</span>
+                      </div>
                     </div>
-                    {w.privateKey && (
-                      <details className="mt-2">
-                        <summary className="text-xs text-amber-400 cursor-pointer">Show Private Key (dev only)</summary>
-                        <code className="text-xs text-amber-300 font-mono break-all block mt-1">{w.privateKey}</code>
-                      </details>
-                    )}
                   </div>
                 ))}
               </div>
             )}
           </div>
         )}
-
-        {/* DEX Swap Tab */}
-        {activeTab === "swap" && (
-          <div className="max-w-2xl">
-            <DexSwapWidget />
-          </div>
-        )}
-
-        {/* Activity Tab */}
-        {activeTab === "activity" && (
-          <div>
-            {escrows.length === 0 ? (
-              <div className="text-center py-12 text-slate-500">
-                <BarChart3 className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">No activity yet.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {escrows.map((escrow) => (
-                  <button key={escrow.id} onClick={() => router.push(`/escrow/${escrow.onChainId}`)} className="w-full p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors flex items-center gap-4 text-left">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${escrow.state === "ACTIVE" ? "bg-emerald-500/20" : escrow.state === "DISPUTED" ? "bg-red-500/20" : escrow.state === "COMPLETED" ? "bg-green-500/20" : "bg-slate-500/20"}`}>
-                      {escrow.state === "ACTIVE" ? <PackageCheck className="w-5 h-5 text-emerald-400" /> : escrow.state === "DISPUTED" ? <Gavel className="w-5 h-5 text-red-400" /> : escrow.state === "COMPLETED" ? <ShieldCheck className="w-5 h-5 text-green-400" /> : <Clock className="w-5 h-5 text-slate-400" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-medium text-white truncate">{escrow.title || `Escrow #${escrow.onChainId}`}</h4>
-                      <p className="text-xs text-slate-500">{STATE_LABELS[escrow.state]} · {new Date(escrow.createdAt).toLocaleDateString()}</p>
-                    </div>
-                    <span className="text-sm text-slate-400 shrink-0">
-                      {escrow.token?.symbol || "TOKEN"} {escrow.totalAmount ? (Number(escrow.totalAmount) / 1e18).toFixed(2) : "0"}
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </main>
+      </div>
     </div>
   );
 }

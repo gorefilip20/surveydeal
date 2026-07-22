@@ -7,6 +7,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── ENUMS ──────────────────────────────────────
+
 enum EscrowState {
   CREATED
   FUNDED
@@ -50,38 +52,74 @@ enum TokenStatus {
   FEATURED
 }
 
-enum DisputeOutcome {
+enum Dispoutcome {
   PENDING
   BUYER_FAVORED
   SELLER_FAVORED
   SPLIT
 }
 
-model User {
-  id              String    @id @default(cuid())
-  walletAddress   String    @unique
-  displayName     String?
-  email           String?   @unique
-  role            UserRole  @default(BUYER)
-  isAdmin         Boolean   @default(false)
-  isArbiter       Boolean   @default(false)
-  isFrozen        Boolean   @default(false)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+enum ChainNetwork {
+  ETHEREUM
+  BNB_CHAIN
+  POLYGON
+  ARBITRUM
+  BASE
+  SOLANA
+  TRON
+  AVALANCHE
+  OPTIMISM
+  FANTOM
+}
 
-  buyerEscrows    Escrow[]  @relation("BuyerEscrows")
-  sellerEscrows   Escrow[]  @relation("SellerEscrows")
-  arbiterEscrows  Escrow[]  @relation("ArbiterEscrows")
-  disputes        Dispute[] @relation("DisputeInitiator")
-  resolutions     Dispute[] @relation("DisputeResolver")
+// ─── MODELS ─────────────────────────────────────
+
+model User {
+  id              String   @id @default(cuid())
+  walletAddress   String   @unique
+  displayName     String?
+  email           String?  @unique
+  role            UserRole @default(BUYER)
+  isAdmin         Boolean  @default(false)
+  isArbiter       Boolean  @default(false)
+  isFrozen        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  buyerEscrows      Escrow[]    @relation("BuyerEscrows")
+  sellerEscrows     Escrow[]    @relation("SellerEscrows")
+  arbiterEscrows    Escrow[]    @relation("ArbiterEscrows")
+  dispuInits        Dispute[]   @relation("DisputeInitiator")
+  dispuResolvs      Dispute[]   @relation("DisputeResolver")
+  wallets           UserWallet[]
 
   @@index([walletAddress])
+}
+
+model UserWallet {
+  id            String        @id @default(cuid())
+  user          User          @relation(fields: [userId], references: [id])
+  userId        String
+  address       String
+  network       ChainNetwork
+  label         String?
+  isPreferred   Boolean       @default(false)
+  isVerified    Boolean       @default(false)
+  balance       String?
+  lastChecked   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([userId, address, network])
+  @@index([userId])
+  @@index([network])
 }
 
 model Token {
   id              String      @id @default(cuid())
   address         String      @unique
   chainId         Int
+  network         ChainNetwork @default(ETHEREUM)
   symbol          String
   name            String
   decimals        Int         @default(18)
@@ -90,7 +128,7 @@ model Token {
   isReflective    Boolean     @default(false)
   hasTax          Boolean     @default(false)
   taxBasisPoints  Int?
-  coingeckoId     String?
+  coinGeckoId     String?
   addedBy         String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
@@ -103,88 +141,91 @@ model Token {
 }
 
 model Escrow {
-  id                  String      @id @default(cuid())
-  onChainId           Int         @unique
-  chainId             Int
-  title               String
-  description         String?
-  buyer               User        @relation("BuyerEscrows", fields: [buyerId], references: [id])
-  buyerId             String
-  seller              User        @relation("SellerEscrows", fields: [sellerId], references: [id])
-  sellerId            String
-  arbiter             User?       @relation("ArbiterEscrows", fields: [arbiterId], references: [id])
-  arbiterId           String?
-  token               Token       @relation(fields: [tokenId], references: [id])
-  tokenId             String
-  totalAmount         String
-  fundedAmount        String?
-  releasedAmount      String      @default("0")
-  protocolFeeTotal    String      @default("0")
-  state               EscrowState @default(CREATED)
-  mode                EscrowMode  @default(LOCKED)
-  fundingMethod       FundingMethod?
-  agreementHash       String?
-  agreementText       String?
-  deadline            DateTime?
-  fundedAt            DateTime?
-  completedAt         DateTime?
-  adminApproved       Boolean     @default(false)
-  adminApprovedBy     String?
-  adminApprovedAt     DateTime?
-  adminNotes          String?
-  depositWalletAddr   String?
-  depositWalletKey    String?
-  depositConfirmed    Boolean     @default(false)
-  derivationIndex     Int?
-  depositNetwork      String?
-  createdAt           DateTime    @default(now())
-  updatedAt           DateTime    @updatedAt
+  id                      String       @id @default(cuid())
+  onChainId               Int          @unique
+  chainId                 Int
+  network                 ChainNetwork @default(ETHEREUM)
+  title                   String
+  description             String?
+  buyer                   User         @relation("BuyerEscrows", fields: [buyerId], references: [id])
+  buyerId                 String
+  seller                  User         @relation("SellerEscrows", fields: [sellerId], references: [id])
+  sellerId                String
+  arbiter                 User?        @relation("ArbiterEscrows", fields: [arbiterId], references: [id])
+  arbiterId               String?
+  token                   Token        @relation(fields: [tokenId], references: [id])
+  tokenId                 String
+  totalAmount             String
+  fundedAmount            String
+  releasedAmount          String       @default("0")
+  protocolFeeTotal        String       @default("0")
+  state                   EscrowState  @default(CREATED)
+  mode                    EscrowMode   @default(LOCKED)
+  fundingMethod           FundingMethod?
+  agreementHash           String?
+  agreementText           String?
+  deadline                DateTime?
+  fundedAt                DateTime?
+  completedAt             DateTime?
+  adminApproved           Boolean      @default(false)
+  adminApprovedBy         String?
+  adminApprovedAt         DateTime?
+  adminNotes              String?
+  depositWalletAddr       String?
+  depositWalletKey        String?
+  depositConfirmed        Boolean      @default(false)
+  derivationIndex         Int?
+  depositNetwork          String?
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
 
-  milestones          Milestone[]
-  transactions        Transaction[]
-  disputes            Dispute[]
+  milestones              Milestone[]
+  transactions            Transaction[]
+  dispuInits              Dispute[]     @relation("DisputeEscrow")
 
   @@index([state])
   @@index([buyerId])
   @@index([sellerId])
   @@index([chainId])
+  @@index([network])
 }
 
 model Milestone {
-  id              String   @id @default(cuid())
-  escrow          Escrow   @relation(fields: [escrowId], references: [id], onDelete: Cascade)
-  escrowId        String
-  index           Int
-  description     String
-  amount          String
-  released        Boolean  @default(false)
-  disputed        Boolean  @default(false)
-  buyerApproved   Boolean  @default(false)
-  sellerDelivered Boolean  @default(false)
-  releasedAt      DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                    String    @id @default(cuid())
+  escrow                Escrow    @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+  escrowId              String
+  index                 Int
+  description           String
+  amount                String
+  released              Boolean   @default(false)
+  dispensed             Boolean   @default(false)
+  buyerApproved         Boolean   @default(false)
+  sellerDelivered       Boolean   @default(false)
+  adminApproved         Boolean   @default(false)
+  releasedAt            DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  disputes        Dispute[]
+  dispuInits            Dispute[]
 
   @@unique([escrowId, index])
   @@index([escrowId])
 }
 
 model Transaction {
-  id              String          @id @default(cuid())
-  escrow          Escrow          @relation(fields: [escrowId], references: [id], onDelete: Cascade)
-  escrowId        String
-  txHash          String          @unique
-  type            TransactionType
-  fromAddress     String
-  toAddress       String
-  amount          String
-  feeAmount       String?
-  chainId         Int
-  blockNumber     Int?
-  status          String          @default("PENDING")
-  createdAt       DateTime        @default(now())
+  id                String          @id @default(cuid())
+  escrow            Escrow          @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+  escrowId          String
+  txHash            String          @unique
+  type              TransactionType
+  fromAddress       String
+  toAddress         String
+  amount            String
+  feeAmount         String?
+  chainId           Int
+  blockNumber       Int?
+  status            String          @default("CONFIRMED")
+  createdAt         DateTime        @default(now())
 
   @@index([escrowId])
   @@index([txHash])
@@ -192,23 +233,20 @@ model Transaction {
 }
 
 model Dispute {
-  id                String          @id @default(cuid())
-  escrow            Escrow          @relation(fields: [escrowId], references: [id], onDelete: Cascade)
-  escrowId          String
-  milestone         Milestone       @relation(fields: [milestoneId], references: [id])
-  milestoneId       String
-  initiator         User            @relation("DisputeInitiator", fields: [initiatorId], references: [id])
-  initiatorId       String
-  resolver          User?           @relation("DisputeResolver", fields: [resolverId], references: [id])
-  resolverId        String?
-  reason            String
-  evidence          String?
-  outcome           DisputeOutcome  @default(PENDING)
-  buyerShareBps     Int?
-  sellerShareBps    Int?
-  resolvedAt        DateTime?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  id              String      @id @default(cuid())
+  escrow          Escrow      @relation("DisputeEscrow", fields: [escrowId], references: [id])
+  escrowId        String
+  milestone       Milestone?  @relation(fields: [milestoneId], references: [id])
+  milestoneId     String?
+  initiator       User        @relation("DisputeInitiator", fields: [initiatorId], references: [id])
+  initiatorId     String
+  resolver        User?       @relation("DisputeResolver", fields: [resolverId], references: [id])
+  resolverId      String?
+  reason          String
+  evidence        String?
+  outcome         Dispoutcome @default(PENDING)
+  resolvedAt      DateTime?
+  createdAt       DateTime    @default(now())
 
   @@index([escrowId])
   @@index([outcome])
@@ -230,10 +268,77 @@ model AdminAuditLog {
 }
 
 model ProtocolConfig {
-  id                String   @id @default(cuid())
-  key               String   @unique
-  value             String
-  description       String?
-  updatedBy         String?
-  updatedAt         DateTime @updatedAt
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedBy   String?
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── CHAT SYSTEM ────────────────────────────────────
+
+enum ChatRoomStatus {
+  OPEN
+  WAITING
+  ESCALATED
+  CLOSED
+}
+
+model ChatRoom {
+  id          String         @id @default(cuid())
+  user        User           @relation(fields: [userId], references: [id])
+  userId      String
+  escrow      Escrow?        @relation(fields: [escrowId], references: [id])
+  escrowId    String?
+  subject     String         @default("Support Request")
+  status      ChatRoomStatus @default(OPEN)
+  closedAt    DateTime?
+  closedBy    String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  messages    ChatMessage[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([escrowId])
+}
+
+model ChatMessage {
+  id          String   @id @default(cuid())
+  room        ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId      String
+  sender      User     @relation(fields: [senderId], references: [id])
+  senderId    String
+  content     String
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([roomId, createdAt])
+  @@index([senderId])
+  @@index([read])
+}
+
+// ─── ADMIN TRANSFERS ────────────────────────────────
+
+model AdminTransfer {
+  id              String   @id @default(cuid())
+  admin           User     @relation(fields: [adminId], references: [id])
+  adminId         String
+  toAddress       String
+  tokenAddress    String
+  tokenSymbol     String
+  amount          String
+  amountDisplay   String
+  chainId         Int
+  txHash          String   @unique
+  blockNumber     Int?
+  note            String?
+  createdAt       DateTime @default(now())
+
+  @@index([adminId])
+  @@index([toAddress])
+  @@index([txHash])
+  @@index([createdAt])
 }

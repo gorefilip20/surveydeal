@@ -21,7 +21,7 @@ async function main() {
 
   const ADMIN_ADDRESS = process.env.ADMIN_ADDRESS || deployerAddress;
   const FEE_RECIPIENT = process.env.FEE_RECIPIENT || deployerAddress;
-  const FEE_BASIS_POINTS = parseInt(process.env.FEE_BASIS_POINTS || "100", 10);
+  const FEE_BASIS_POINTS = parseInt(process.env.FEE_BASIS_POINTS || "0", 10);
   const MAX_FEE_ABSOLUTE = hre.ethers.parseUnits(
     process.env.MAX_FEE_ABSOLUTE || "50",
     6

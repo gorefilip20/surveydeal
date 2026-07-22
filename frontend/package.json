@@ -2,7 +2,7 @@
   "name": "surveydeal-frontend",
   "version": "1.0.0",
   "private": true,
-  "description": "Surveydeal — Decentralized Milestone Escrow Protocol Frontend",
+  "description": "Surveydeal \u2014 Decentralized Milestone Escrow Protocol Frontend",
   "engines": {
     "node": ">=18.17.0",
     "npm": ">=9.0.0"
@@ -42,7 +42,8 @@
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "viem": "^2.21.0",
-    "wagmi": "^2.14.0"
+    "wagmi": "^2.14.0",
+    "qrcode.react": "^3.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

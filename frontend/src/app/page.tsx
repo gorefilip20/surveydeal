@@ -1,355 +1,213 @@
 "use client";
 
-import { useState } from "react";
-import { useAccount } from "wagmi";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-import {
-  Shield,
-  ShieldCheck,
-  Scale,
-  Wallet,
-  ArrowRightLeft,
-  Clock,
-  CheckCircle2,
-  Gavel,
-  ExternalLink,
-  Lock,
-  Users,
-  Coins,
-  BarChart3,
-  Zap,
-  Globe,
-} from "lucide-react";
-import EscrowForm from "@/components/EscrowForm";
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
 
-function FeatureCard({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon: React.ElementType;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="group relative p-6 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] hover:border-emerald-500/20 transition-all duration-300">
-      <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-emerald-500/5 to-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-      <div className="relative">
-        <div className="w-10 h-10 rounded-lg gradient-brand flex items-center justify-center mb-4">
-          <Icon className="w-5 h-5 text-white" />
-        </div>
-        <h3 className="font-semibold text-white mb-2">{title}</h3>
-        <p className="text-sm text-slate-400 leading-relaxed">{description}</p>
-      </div>
-    </div>
-  );
-}
+const CHAINS = [
+  { id: "ETHEREUM", name: "Ethereum", icon: "🔷", nativeCurrency: "ETH", color: "#627EEA" },
+  { id: "BNB_CHAIN", name: "BNB Chain", icon: "🟡", nativeCurrency: "BNB", color: "#F0B90B" },
+  { id: "POLYGON", name: "Polygon", icon: "🟣", nativeCurrency: "MATIC", color: "#8247E5" },
+  { id: "ARBITRUM", name: "Arbitrum", icon: "🔵", nativeCurrency: "ETH", color: "#28A0F0" },
+  { id: "BASE", name: "Base", icon: "🔷", nativeCurrency: "ETH", color: "#0052FF" },
+  { id: "SOLANA", name: "Solana", icon: "☀️", nativeCurrency: "SOL", color: "#9945FF" },
+  { id: "TRON", name: "TRON", icon: "🔴", nativeCurrency: "TRX", color: "#FF0013" },
+  { id: "AVALANCHE", name: "Avalanche", icon: "🔺", nativeCurrency: "AVAX", color: "#E84142" },
+];
 
-function StatCard({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="text-center">
-      <div className="text-2xl md:text-3xl font-bold text-gradient-brand">{value}</div>
-      <div className="text-xs text-slate-500 mt-1 uppercase tracking-wider">{label}</div>
-    </div>
-  );
-}
+const FEATURES = [
+  {
+    icon: "🔒",
+    title: "Smart Contract Escrow",
+    desc: "Funds locked in audited smart contracts. Neither party can cheat.",
+  },
+  {
+    icon: "🌍",
+    title: "Multi-Chain Support",
+    desc: "Trade on Ethereum, BNB, Polygon, Arbitrum, Base, Solana, TRON and more.",
+  },
+  {
+    icon: "🪙",
+    title: "All Tokens Welcome",
+    desc: "ERC-20, SPL tokens, memecoins, stablecoins — any token, any chain.",
+  },
+  {
+    icon: "👨‍⚖️",
+    title: "Arbiter Resolution",
+    desc: "Neutral third-party settles disputes with fair percentage splits.",
+  },
+  {
+    icon: "📊",
+    title: "Milestone Payments",
+    desc: "Release funds in stages as work is delivered and approved.",
+  },
+  {
+    icon: "⚡",
+    title: "Instant Settlement",
+    desc: "On-chain settlement in seconds. No middlemen, no delays.",
+  },
+];
 
-export default function Home() {
-  const { isConnected } = useAccount();
-  const [showApp, setShowApp] = useState(false);
-
-  if (showApp || isConnected) {
-    return (
-      <div className="min-h-screen">
-        <nav className="sticky top-0 z-50 glass border-b border-white/5">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <button
-                onClick={() => setShowApp(false)}
-                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-              >
-                <div className="w-8 h-8 rounded-lg gradient-brand flex items-center justify-center">
-                  <Shield className="w-4 h-4 text-white" />
-                </div>
-                <span className="text-lg font-bold text-white">
-                  Survey<span className="text-gradient-brand">deal</span>
-                </span>
-              </button>
-              <div className="flex items-center gap-4">
-                <a href="/dashboard" className="text-sm text-slate-400 hover:text-white transition-colors">Dashboard</a>
-                <a href="/escrow/create" className="text-sm text-slate-400 hover:text-white transition-colors">Create Escrow</a>
-                <a href="/swap" className="text-sm text-slate-400 hover:text-white transition-colors">Swap</a>
-                <ConnectButton />
-              </div>
-            </div>
-          </div>
-        </nav>
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <EscrowForm />
-        </main>
-      </div>
-    );
-  }
+export default function LandingPage() {
+  const [stats, setStats] = useState({ escrows: 0, volume: "0", users: 0 });
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gray-950 text-white">
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 glass border-b border-white/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg gradient-brand flex items-center justify-center">
-                <Shield className="w-4 h-4 text-white" />
-              </div>
-              <span className="text-lg font-bold text-white">
-                Survey<span className="text-gradient-brand">deal</span>
-              </span>
+      <nav className="border-b border-gray-800/50 bg-gray-950/80 backdrop-blur-xl sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-lg font-bold">
+              SD
             </div>
-            <div className="hidden md:flex items-center gap-8 text-sm text-slate-400">
-              <a href="#features" className="hover:text-white transition-colors">Features</a>
-              <a href="#how-it-works" className="hover:text-white transition-colors">How It Works</a>
-              <a href="#modes" className="hover:text-white transition-colors">Escrow Modes</a>
-              <a href="/dashboard" className="hover:text-white transition-colors">Dashboard</a>
-              <a href="/swap" className="hover:text-white transition-colors">Swap</a>
-            </div>
-            <ConnectButton />
+            <span className="text-xl font-bold">SurveyDeal</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <Link href="/dashboard" className="text-sm text-gray-400 hover:text-white transition">
+              Dashboard
+            </Link>
+            <Link href="/admin" className="text-sm text-gray-400 hover:text-white transition">
+              Admin
+            </Link>
+            <Link
+              href="/escrow/create"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition"
+            >
+              Create Escrow
+            </Link>
           </div>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section className="relative pt-20 pb-32 px-4 sm:px-6 lg:px-8 overflow-hidden">
-        <div className="absolute inset-0 -z-10">
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-gradient-to-br from-emerald-500/10 via-teal-500/8 to-blue-500/10 rounded-full blur-3xl" />
-        </div>
-
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/5 text-emerald-400 text-xs font-medium mb-8">
-            <Zap className="w-3 h-3" />
-            Decentralized Crypto Escrow Protocol
-          </div>
-
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white leading-tight mb-6">
-            Secure Milestone-Based{" "}
-            <span className="text-gradient-brand">Crypto Escrow</span>
-          </h1>
-
-          <p className="text-lg text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            Protect your crypto transactions with smart contract escrow.
-            Milestone releases, dual-mode dispute resolution, and support
-            for all ERC-20 tokens — including memecoins and tax tokens.
-          </p>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-            <a
-              href="/escrow/create"
-              className="px-8 py-3 rounded-xl gradient-brand text-white font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-emerald-500/20"
-            >
-              Launch Escrow App
-            </a>
-            <a
-              href="/dashboard"
-              className="px-8 py-3 rounded-xl border border-white/10 text-slate-300 font-medium hover:bg-white/5 transition-colors"
-            >
-              My Dashboard
-            </a>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-2xl mx-auto">
-            <StatCard value="100%" label="On-Chain" />
-            <StatCard value="2 Modes" label="Escrow Types" />
-            <StatCard value="1%" label="Protocol Fee" />
-            <StatCard value="All" label="ERC-20 Tokens" />
-          </div>
-        </div>
-      </section>
-
-      {/* Features Grid */}
-      <section id="features" className="py-24 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-white mb-4">
-              Built for <span className="text-gradient-brand">Secure Trading</span>
-            </h2>
-            <p className="text-slate-400 max-w-xl mx-auto">
-              Every feature designed to protect both buyers and sellers in crypto transactions.
+      {/* Hero */}
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 via-purple-500/5 to-transparent" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-24 pb-20 relative">
+          <div className="text-center max-w-4xl mx-auto">
+            <div className="inline-flex items-center gap-2 bg-gray-800/50 border border-gray-700 rounded-full px-4 py-1.5 text-sm text-gray-300 mb-6">
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              Live on BNB Chain, Ethereum, Polygon & more
+            </div>
+            <h1 className="text-5xl sm:text-6xl font-bold leading-tight">
+              Trade Crypto
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
+                {" "}Without Trust Issues
+              </span>
+            </h1>
+            <p className="text-lg text-gray-400 mt-6 max-w-2xl mx-auto">
+              The decentralized escrow platform for buying and selling any token — memecoins, ERC-20s, SPL tokens.
+              Smart contracts hold funds until both parties agree.
             </p>
+            <div className="flex items-center justify-center gap-4 mt-10">
+              <Link
+                href="/escrow/create"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3.5 rounded-xl transition text-lg"
+              >
+                Start Trading →
+              </Link>
+              <a
+                href="https://github.com/gorefilip20/surveydeal"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-gray-800 hover:bg-gray-700 text-white font-medium px-8 py-3.5 rounded-xl border border-gray-700 transition"
+              >
+                View on GitHub
+              </a>
+            </div>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            <FeatureCard
-              icon={Shield}
-              title="Smart Contract Escrow"
-              description="Funds locked in auditable Solidity contracts with OpenZeppelin security — ReentrancyGuard, AccessControl, Pausable."
-            />
-            <FeatureCard
-              icon={CheckCircle2}
-              title="Milestone Releases"
-              description="Split payments into milestones. Funds release only when the buyer approves each deliverable — no all-or-nothing."
-            />
-            <FeatureCard
-              icon={Scale}
-              title="Dual Dispute Resolution"
-              description="Locked mode (2-of-2 consensus) or Arbiter mode (2-of-3 with neutral third party). Choose per escrow."
-            />
-            <FeatureCard
-              icon={Coins}
-              title="All ERC-20 Tokens"
-              description="USDC, USDT, DAI, WETH, memecoins — even tax-on-transfer tokens with automatic amount rescaling."
-            />
-            <FeatureCard
-              icon={Lock}
-              title="Non-Custodial"
-              description="No one — not even the protocol — can access locked funds. Smart contract logic governs all releases and refunds."
-            />
-            <FeatureCard
-              icon={Clock}
-              title="Deadline Protection"
-              description="Auto-refund if the seller misses the deadline. Buyers never get stuck waiting forever."
-            />
-            <FeatureCard
-              icon={Gavel}
-              title="Admin Arbitration"
-              description="Authorized arbiters can resolve disputes with configurable buyer/seller splits (force release or force refund)."
-            />
-            <FeatureCard
-              icon={BarChart3}
-              title="Protocol Fee System"
-              description="Configurable basis-point fees with absolute caps. Transparent, on-chain fee collection."
-            />
-            <FeatureCard
-              icon={Globe}
-              title="Multi-Chain Ready"
-              description="Deploy on Ethereum, Arbitrum, Base, or any EVM chain. Same contract, same security."
-            />
+          {/* Supported Chains */}
+          <div className="mt-20">
+            <p className="text-center text-sm text-gray-500 mb-6">Supported Networks</p>
+            <div className="flex justify-center gap-6 flex-wrap">
+              {CHAINS.map((chain) => (
+                <div key={chain.id} className="flex items-center gap-2 text-gray-400 hover:text-white transition">
+                  <span className="text-2xl">{chain.icon}</span>
+                  <span className="text-sm font-medium">{chain.name}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
-      <section id="how-it-works" className="py-24 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-white mb-4">
-              How <span className="text-gradient-brand">Surveydeal</span> Works
-            </h2>
-            <p className="text-slate-400">Five steps from agreement to payment.</p>
-          </div>
-
-          <div className="space-y-8">
-            {[
-              { step: "01", icon: ArrowRightLeft, title: "Create Escrow", desc: "Buyer defines milestones, selects token, sets deadline, and chooses Locked or Arbiter mode." },
-              { step: "02", icon: Wallet, title: "Fund Escrow", desc: "Buyer approves and deposits tokens into the smart contract. Funds are locked and visible on-chain." },
-              { step: "03", icon: CheckCircle2, title: "Deliver & Approve", desc: "Seller marks milestones delivered. Buyer reviews and approves — funds release per milestone." },
-              { step: "04", icon: Gavel, title: "Dispute (If Needed)", desc: "Either party can raise a dispute. Resolved by consensus or arbiter with configurable splits." },
-              { step: "05", icon: ShieldCheck, title: "Completion", desc: "All milestones released, escrow marked complete. Or buyer claims refund if deadline expires." },
-            ].map(({ step, icon: Icon, title, desc }) => (
-              <div key={step} className="flex gap-6 items-start">
-                <div className="shrink-0 w-12 h-12 rounded-xl gradient-brand flex items-center justify-center text-white font-bold text-sm">
-                  {step}
-                </div>
-                <div className="flex-1 pb-8 border-b border-white/5 last:border-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Icon className="w-4 h-4 text-emerald-400" />
-                    <h3 className="font-semibold text-white">{title}</h3>
-                  </div>
-                  <p className="text-sm text-slate-400">{desc}</p>
-                </div>
+      {/* Features */}
+      <section className="py-20 border-t border-gray-800/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <h2 className="text-3xl font-bold text-center mb-4">
+            Why SurveyDeal?
+          </h2>
+          <p className="text-center text-gray-400 mb-12 max-w-xl mx-auto">
+            Built for the memecoin era. Buy, sell, and trade any token with full escrow protection.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {FEATURES.map((f) => (
+              <div
+                key={f.title}
+                className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6 hover:border-gray-700 transition"
+              >
+                <span className="text-3xl">{f.icon}</span>
+                <h3 className="text-lg font-semibold mt-4">{f.title}</h3>
+                <p className="text-gray-400 text-sm mt-2">{f.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Escrow Modes */}
-      <section id="modes" className="py-24 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-white mb-4">
-              Two <span className="text-gradient-brand">Escrow Modes</span>
-            </h2>
-            <p className="text-slate-400">Choose the trust model that fits your deal.</p>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="relative p-8 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 glow-green">
-              <div className="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center mb-6">
-                <Lock className="w-6 h-6 text-emerald-400" />
+      {/* How It Works */}
+      <section className="py-20 border-t border-gray-800/50 bg-gray-900/30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            {[
+              { step: "1", title: "Connect Wallet", desc: "Link your wallet on any supported chain" },
+              { step: "2", title: "Create Escrow", desc: "Set token, amount, milestones, and counterpart" },
+              { step: "3", title: "Fund Escrow", desc: "Send tokens to the escrow deposit address" },
+              { step: "4", title: "Deliver & Approve", desc: "Seller delivers, buyer approves milestones" },
+              { step: "5", title: "Funds Released", desc: "Smart contract auto-releases to seller" },
+            ].map((s, i) => (
+              <div key={s.step} className="text-center">
+                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-lg font-bold mx-auto mb-3">
+                  {s.step}
+                </div>
+                <h4 className="font-semibold text-sm">{s.title}</h4>
+                <p className="text-xs text-gray-400 mt-1">{s.desc}</p>
+                {i < 4 && <div className="hidden md:block text-gray-600 text-2xl mt-3">→</div>}
               </div>
-              <h3 className="text-xl font-bold text-white mb-3">Locked Mode (2-of-2)</h3>
-              <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-                Both buyer and seller must agree to release or refund. No third party involved.
-                Perfect for established trading partners with mutual trust.
-              </p>
-              <ul className="space-y-2 text-sm">
-                {["Buyer + Seller consensus", "No arbiter fees", "Maximum privacy", "Dispute resolved by agreement"].map((item) => (
-                  <li key={item} className="flex items-center gap-2 text-slate-300">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="relative p-8 rounded-2xl border border-blue-500/20 bg-blue-500/5 glow-blue">
-              <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center mb-6">
-                <Users className="w-6 h-6 text-blue-400" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-3">Arbiter Mode (2-of-3)</h3>
-              <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-                A neutral arbiter can break deadlocks. Any 2 of the 3 parties can decide the outcome.
-                Ideal for first-time trades or high-value deals.
-              </p>
-              <ul className="space-y-2 text-sm">
-                {["Neutral third-party arbiter", "Configurable split resolution", "Buyer/seller protection", "Force release or refund"].map((item) => (
-                  <li key={item} className="flex items-center gap-2 text-slate-300">
-                    <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            ))}
           </div>
         </div>
       </section>
 
       {/* CTA */}
-      <section className="py-24 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl mx-auto text-center">
-          <div className="p-12 rounded-2xl glass border-emerald-500/10">
-            <h2 className="text-3xl font-bold text-white mb-4">
-              Ready to Escrow?
-            </h2>
-            <p className="text-slate-400 mb-8">
-              Connect your wallet and create your first milestone-based escrow in minutes.
-            </p>
-            <a
-              href="/escrow/create"
-              className="px-10 py-3.5 rounded-xl gradient-brand text-white font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-emerald-500/25 inline-block"
-            >
-              Launch Surveydeal App
-            </a>
-          </div>
+      <section className="py-20 border-t border-gray-800/50">
+        <div className="max-w-3xl mx-auto text-center px-4">
+          <h2 className="text-4xl font-bold">
+            Ready to Trade Safely?
+          </h2>
+          <p className="text-gray-400 mt-4 mb-8">
+            Create your first escrow in under 2 minutes. No sign-up required — just connect your wallet.
+          </p>
+          <Link
+            href="/escrow/create"
+            className="inline-block bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold px-10 py-4 rounded-xl transition text-lg"
+          >
+            Launch App →
+          </Link>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-white/5 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded gradient-brand flex items-center justify-center">
-              <Shield className="w-3 h-3 text-white" />
-            </div>
-            <span className="text-sm text-slate-500">
-              Surveydeal &copy; {new Date().getFullYear()} — Decentralized Crypto Escrow
-            </span>
-          </div>
-          <div className="flex items-center gap-6 text-xs text-slate-600">
-            <span>Solidity ^0.8.20</span>
-            <span>OpenZeppelin Secured</span>
-            <span>EVM Compatible</span>
-            <a href="/admin" className="text-emerald-600 hover:text-emerald-400 transition-colors">Admin</a>
+      <footer className="border-t border-gray-800/50 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between text-sm text-gray-500">
+          <p>© 2024 SurveyDeal. Decentralized Escrow Protocol.</p>
+          <div className="flex gap-4">
+            <a href="https://github.com/gorefilip20/surveydeal" target="_blank" className="hover:text-white transition">
+              GitHub
+            </a>
+            <Link href="/admin" className="hover:text-white transition">
+              Admin
+            </Link>
           </div>
         </div>
       </footer>

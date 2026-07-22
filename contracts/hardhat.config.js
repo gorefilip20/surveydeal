@@ -48,6 +48,16 @@ module.exports = {
       accounts: [DEPLOYER_PRIVATE_KEY],
       chainId: 421614,
     },
+    bscTestnet: {
+      url: "https://data-seed-prebsc-1-s1.binance.org:8545",
+      accounts: [DEPLOYER_PRIVATE_KEY],
+      chainId: 97,
+    },
+    bscMainnet: {
+      url: "https://bsc-dataseed.binance.org",
+      accounts: [DEPLOYER_PRIVATE_KEY],
+      chainId: 56,
+    },
   },
   etherscan: {
     apiKey: {
