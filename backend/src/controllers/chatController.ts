@@ -262,7 +262,7 @@ router.get("/admin/rooms", adminMiddleware, async (req: AuthRequest, res: Respon
             take: 1,
             include: { sender: { select: { id: true, displayName: true, isAdmin: true } } },
           },
-          _count: { select: { messages: true, unreadMessages: true } },
+          _count: { select: { messages: true } },
         },
         orderBy: { updatedAt: "desc" },
         skip: (pageNum - 1) * limitNum,

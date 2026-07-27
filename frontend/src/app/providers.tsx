@@ -1,9 +1,9 @@
 "use client";
 
-import { ReactNode, useState, useEffect } from "react";
+import { ReactNode, useState } from "react";
 import {
   RainbowKitProvider,
-  darkTheme,
+  lightTheme,
   type Theme,
 } from "@rainbow-me/rainbowkit";
 import { WagmiProvider } from "wagmi";
@@ -24,58 +24,58 @@ if (typeof window !== "undefined") {
 }
 
 const surveydealTheme: Theme = {
-  ...darkTheme({
-    accentColor: "#10b981",
+  ...lightTheme({
+    accentColor: "#ec3013",
     accentColorForeground: "#ffffff",
-    borderRadius: "medium",
+    borderRadius: "none",
     fontStack: "system",
     overlayBlur: "small",
   }),
   colors: {
-    ...darkTheme().colors,
-    accentColor: "#10b981",
+    ...lightTheme().colors,
+    accentColor: "#ec3013",
     accentColorForeground: "#ffffff",
-    connectButtonBackground: "#0a0f1a",
-    connectButtonBackgroundError: "#7f1d1d",
-    connectButtonInnerBackground: "#111827",
-    connectButtonText: "#e2e8f0",
-    connectButtonTextError: "#fecaca",
-    connectionIndicator: "#34d399",
-    downloadBottomCardBackground: "#0a0f1a",
-    downloadTopCardBackground: "#111827",
-    error: "#ef4444",
-    generalBorder: "#1e3a3a",
-    generalBorderDim: "#0f2020",
-    menuItemBackground: "#111827",
-    modalBackdrop: "rgba(0, 0, 0, 0.75)",
-    modalBackground: "#0a0f1a",
-    modalBorder: "#1e3a3a",
-    modalText: "#e2e8f0",
-    modalTextDim: "#94a3b8",
-    modalTextSecondary: "#64748b",
-    profileAction: "#111827",
-    profileActionHover: "#1e293b",
-    profileForeground: "#0a0f1a",
-    selectedOptionBorder: "#10b981",
-    standby: "#3b82f6",
+    connectButtonBackground: "#f3f2f2",
+    connectButtonBackgroundError: "#fde5e0",
+    connectButtonInnerBackground: "#eae9e8",
+    connectButtonText: "#201e1d",
+    connectButtonTextError: "#b22610",
+    connectionIndicator: "#ec3013",
+    downloadBottomCardBackground: "#f3f2f2",
+    downloadTopCardBackground: "#eae9e8",
+    error: "#b22610",
+    generalBorder: "#d4d2d1",
+    generalBorderDim: "#eae9e8",
+    menuItemBackground: "#eae9e8",
+    modalBackdrop: "rgba(32, 30, 29, 0.5)",
+    modalBackground: "#f3f2f2",
+    modalBorder: "#d4d2d1",
+    modalText: "#201e1d",
+    modalTextDim: "#7e7b79",
+    modalTextSecondary: "#94918f",
+    profileAction: "#eae9e8",
+    profileActionHover: "#d4d2d1",
+    profileForeground: "#f3f2f2",
+    selectedOptionBorder: "#ec3013",
+    standby: "#ec3013",
   },
   fonts: {
-    body: "Inter, system-ui, -apple-system, sans-serif",
+    body: "Archivo, system-ui, -apple-system, sans-serif",
   },
   radii: {
-    actionButton: "8px",
-    connectButton: "10px",
-    menuButton: "8px",
-    modal: "16px",
-    modalMobile: "16px",
+    actionButton: "0px",
+    connectButton: "0px",
+    menuButton: "0px",
+    modal: "0px",
+    modalMobile: "0px",
   },
   shadows: {
-    connectButton: "0 4px 14px rgba(16, 185, 129, 0.15)",
-    dialog: "0 8px 32px rgba(0, 0, 0, 0.6)",
-    profileDetailsAction: "0 2px 6px rgba(0, 0, 0, 0.3)",
-    selectedOption: "0 0 0 2px #10b981",
-    selectedWallet: "0 0 0 2px #10b981",
-    walletLogo: "0 2px 8px rgba(0, 0, 0, 0.2)",
+    connectButton: "none",
+    dialog: "0 8px 32px rgba(32, 30, 29, 0.15)",
+    profileDetailsAction: "none",
+    selectedOption: "0 0 0 2px #ec3013",
+    selectedWallet: "0 0 0 2px #ec3013",
+    walletLogo: "none",
   },
 };
 
@@ -101,7 +101,7 @@ export function Providers({ children }: { children: ReactNode }) {
           theme={surveydealTheme}
           modalSize="compact"
           appInfo={{
-            appName: "Surveydeal",
+            appName: "SurveyDeal",
             learnMoreUrl: "https://surveydeal.io/docs",
           }}
           showRecentTransactions={true}
