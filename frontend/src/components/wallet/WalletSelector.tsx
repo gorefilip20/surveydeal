@@ -11,8 +11,6 @@ const CHAINS = [
   { id: "AVALANCHE", name: "Avalanche", icon: "🔺", chainId: 43114, nativeCurrency: "AVAX", color: "#E84142" },
   { id: "OPTIMISM", name: "Optimism", icon: "🔴", chainId: 10, nativeCurrency: "ETH", color: "#FF0420" },
   { id: "FANTOM", name: "Fantom", icon: "👻", chainId: 250, nativeCurrency: "FTM", color: "#1969FF" },
-  { id: "SOLANA", name: "Solana", icon: "☀️", chainId: 0, nativeCurrency: "SOL", color: "#9945FF" },
-  { id: "TRON", name: "TRON", icon: "🔴", chainId: 0, nativeCurrency: "TRX", color: "#FF0013" },
 ];
 
 interface Wallet {

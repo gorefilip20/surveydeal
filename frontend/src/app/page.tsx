@@ -19,8 +19,6 @@ const NETWORKS = [
   { abbr: "POL", name: "Polygon", currency: "MATIC" },
   { abbr: "ARB", name: "Arbitrum", currency: "ETH" },
   { abbr: "BASE", name: "Base", currency: "ETH" },
-  { abbr: "SOL", name: "Solana", currency: "SOL" },
-  { abbr: "TRX", name: "TRON", currency: "TRX" },
   { abbr: "AVAX", name: "Avalanche", currency: "AVAX" },
   { abbr: "OP", name: "Optimism", currency: "ETH" },
   { abbr: "FTM", name: "Fantom", currency: "FTM" },
@@ -35,12 +33,12 @@ const FEATURES = [
   {
     icon: Globe,
     title: "Multi-Chain Support",
-    desc: "Trade on Ethereum, BNB, Polygon, Arbitrum, Base, Solana, TRON and more.",
+    desc: "Trade on Ethereum, BNB, Polygon, Arbitrum, Base, Avalanche and more.",
   },
   {
     icon: Coins,
     title: "All Tokens Welcome",
-    desc: "ERC-20, SPL tokens, memecoins, stablecoins — any token, any chain.",
+    desc: "ERC-20 tokens, memecoins, stablecoins — any EVM token, any chain.",
   },
   {
     icon: Shield,

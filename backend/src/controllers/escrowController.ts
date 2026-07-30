@@ -1,21 +1,35 @@
 import { Router, Request, Response } from "express";
-import { PrismaClient, EscrowState, ChainNetwork } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { ethers } from "ethers";
+import * as crypto from "crypto";
 import {
   verifyDepositTransaction,
   confirmDeposit,
 } from "../services/blockchainListener";
-import {
-  generateDepositWallet,
-  getNetworkType,
-} from "../services/walletGenerator";
+import { generateDepositWallet } from "../services/walletGenerator";
+import { authLimiter, depositLimiter } from "../middleware/rateLimiter";
 
 const prisma = new PrismaClient();
 const router = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET!;
-const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:5000";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable must be set");
+}
+
+const EVM_CHAIN_IDS = [1, 56, 137, 42161, 8453, 43114, 10, 250];
+
+const nonceStore = new Map<string, { nonce: string; expires: number }>();
+
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  CREATED: ["FUNDED"],
+  FUNDED: ["ACTIVE", "DISPUTED", "REFUNDED"],
+  ACTIVE: ["COMPLETED", "DISPUTED"],
+  DISPUTED: ["COMPLETED", "REFUNDED"],
+  COMPLETED: [],
+  REFUNDED: [],
+};
 
 // ── Auth Middleware (user-level) ────────────────────────────
 
@@ -31,7 +45,7 @@ function userAuth(req: AuthRequest, res: Response, next: Function) {
     return;
   }
   try {
-    const payload = jwt.verify(header.slice(7), JWT_SECRET) as {
+    const payload = jwt.verify(header.slice(7), JWT_SECRET!) as {
       sub: string;
       wallet: string;
     };
@@ -47,13 +61,46 @@ function userAuth(req: AuthRequest, res: Response, next: Function) {
 //  AUTH ENDPOINTS
 // ══════════════════════════════════════════════════════════════
 
-router.post("/auth/login", async (req: Request, res: Response) => {
+router.get("/auth/nonce/:walletAddress", (req: Request, res: Response) => {
+  const { walletAddress } = req.params;
+  if (!ethers.isAddress(walletAddress)) {
+    res.status(400).json({ error: "Invalid wallet address" });
+    return;
+  }
+  const nonce = crypto.randomBytes(32).toString("hex");
+  const expires = Date.now() + 5 * 60 * 1000;
+  nonceStore.set(walletAddress.toLowerCase(), { nonce, expires });
+
+  const message = `Sign this message to log in to SurveyDeal.\n\nNonce: ${nonce}\nTimestamp: ${new Date().toISOString()}`;
+  res.json({ message, nonce });
+});
+
+router.post("/auth/login", authLimiter, async (req: Request, res: Response) => {
   try {
     const { walletAddress, signature, message } = req.body;
+    if (!walletAddress || !signature || !message) {
+      res.status(400).json({ error: "walletAddress, signature, and message are required" });
+      return;
+    }
+
     const recoveredAddress = ethers.verifyMessage(message, signature);
     if (recoveredAddress.toLowerCase() !== walletAddress.toLowerCase()) {
       res.status(401).json({ error: "Signature verification failed" });
       return;
+    }
+
+    const stored = nonceStore.get(walletAddress.toLowerCase());
+    if (stored) {
+      if (Date.now() > stored.expires) {
+        nonceStore.delete(walletAddress.toLowerCase());
+        res.status(401).json({ error: "Nonce expired, request a new one" });
+        return;
+      }
+      if (!message.includes(stored.nonce)) {
+        res.status(401).json({ error: "Invalid nonce in signed message" });
+        return;
+      }
+      nonceStore.delete(walletAddress.toLowerCase());
     }
 
     let user = await prisma.user.findUnique({
@@ -71,7 +118,7 @@ router.post("/auth/login", async (req: Request, res: Response) => {
 
     const token = jwt.sign(
       { sub: user.id, wallet: user.walletAddress, isAdmin: user.isAdmin },
-      JWT_SECRET,
+      JWT_SECRET!,
       { expiresIn: "24h" }
     );
     res.json({
@@ -147,7 +194,7 @@ router.get("/wallets", userAuth, async (req: AuthRequest, res: Response) => {
       orderBy: [{ isPreferred: "desc" }, { createdAt: "desc" }],
     });
     res.json(wallets);
-  } catch (err: any) {
+  } catch {
     res.status(500).json({ error: "Failed to fetch wallets" });
   }
 });
@@ -161,8 +208,7 @@ router.post("/wallets", userAuth, async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    // Validate address format per network
-    const validNetworks = Object.values(ChainNetwork);
+    const validNetworks = ["ETHEREUM", "BNB_CHAIN", "POLYGON", "ARBITRUM", "BASE", "AVALANCHE", "OPTIMISM", "FANTOM"];
     if (!validNetworks.includes(network)) {
       res.status(400).json({ error: `Invalid network. Supported: ${validNetworks.join(", ")}` });
       return;
@@ -172,7 +218,7 @@ router.post("/wallets", userAuth, async (req: AuthRequest, res: Response) => {
       data: {
         userId: req.userId!,
         address: address.toLowerCase(),
-        network: network as ChainNetwork,
+        network: network as any,
         label,
         isPreferred: isPreferred || false,
       },
@@ -192,7 +238,7 @@ router.patch("/wallets/:walletId", userAuth, async (req: AuthRequest, res: Respo
   try {
     const { isPreferred, label } = req.body;
     const wallet = await prisma.userWallet.findUnique({
-      where: { id: req.params.walletId },
+      where: { id: req.params.walletId as string },
     });
 
     if (!wallet || wallet.userId !== req.userId) {
@@ -200,7 +246,6 @@ router.patch("/wallets/:walletId", userAuth, async (req: AuthRequest, res: Respo
       return;
     }
 
-    // If setting as preferred, unset others on same network
     if (isPreferred) {
       await prisma.userWallet.updateMany({
         where: { userId: req.userId, network: wallet.network, id: { not: wallet.id } },
@@ -209,7 +254,7 @@ router.patch("/wallets/:walletId", userAuth, async (req: AuthRequest, res: Respo
     }
 
     const updated = await prisma.userWallet.update({
-      where: { id: req.params.walletId },
+      where: { id: req.params.walletId as string },
       data: {
         ...(isPreferred !== undefined && { isPreferred }),
         ...(label !== undefined && { label }),
@@ -217,7 +262,7 @@ router.patch("/wallets/:walletId", userAuth, async (req: AuthRequest, res: Respo
     });
 
     res.json(updated);
-  } catch (err: any) {
+  } catch {
     res.status(500).json({ error: "Failed to update wallet" });
   }
 });
@@ -225,15 +270,15 @@ router.patch("/wallets/:walletId", userAuth, async (req: AuthRequest, res: Respo
 router.delete("/wallets/:walletId", userAuth, async (req: AuthRequest, res: Response) => {
   try {
     const wallet = await prisma.userWallet.findUnique({
-      where: { id: req.params.walletId },
+      where: { id: req.params.walletId as string },
     });
     if (!wallet || wallet.userId !== req.userId) {
       res.status(403).json({ error: "Not authorized" });
       return;
     }
-    await prisma.userWallet.delete({ where: { id: req.params.walletId } });
+    await prisma.userWallet.delete({ where: { id: req.params.walletId as string } });
     res.json({ success: true });
-  } catch (err: any) {
+  } catch {
     res.status(500).json({ error: "Failed to delete wallet" });
   }
 });
@@ -245,7 +290,6 @@ router.delete("/wallets/:walletId", userAuth, async (req: AuthRequest, res: Resp
 router.post("/escrows", userAuth, async (req: AuthRequest, res: Response) => {
   try {
     const {
-      onChainId,
       chainId,
       title,
       description,
@@ -266,30 +310,43 @@ router.post("/escrows", userAuth, async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    // Find or create seller
+    const resolvedChainId = chainId || 1;
+    if (!EVM_CHAIN_IDS.includes(resolvedChainId)) {
+      res.status(400).json({
+        error: `Chain ${resolvedChainId} not supported. Supported: ${EVM_CHAIN_IDS.join(", ")}`,
+      });
+      return;
+    }
+
+    if (sellerWallet.toLowerCase() === req.userWallet?.toLowerCase()) {
+      res.status(400).json({ error: "Buyer and seller cannot be the same wallet" });
+      return;
+    }
+
+    const maxOnChain = await prisma.escrow.aggregate({ _max: { onChainId: true } });
+    const nextOnChainId = (maxOnChain._max.onChainId ?? 0) + 1;
+
     const seller = await prisma.user.upsert({
       where: { walletAddress: sellerWallet.toLowerCase() },
       update: {},
       create: { walletAddress: sellerWallet.toLowerCase(), role: "SELLER" },
     });
 
-    // Find or create token
     let token = await prisma.token.findFirst({
-      where: { address: tokenAddress.toLowerCase(), chainId: chainId || 1 },
+      where: { address: tokenAddress.toLowerCase(), chainId: resolvedChainId },
     });
     if (!token) {
       token = await prisma.token.create({
         data: {
           address: tokenAddress.toLowerCase(),
-          chainId: chainId || 1,
-          network: (network as ChainNetwork) || "ETHEREUM",
+          chainId: resolvedChainId,
+          network: ((network as string) || "ETHEREUM") as any,
           symbol: "UNKNOWN",
           name: "Unknown Token",
         },
       });
     }
 
-    // Find arbiter if provided
     let arbiterId: string | undefined;
     if (arbiterWallet) {
       const arbiter = await prisma.user.findUnique({
@@ -300,9 +357,9 @@ router.post("/escrows", userAuth, async (req: AuthRequest, res: Response) => {
 
     const escrow = await prisma.escrow.create({
       data: {
-        onChainId: onChainId || 0,
-        chainId: chainId || 1,
-        network: (network as ChainNetwork) || "ETHEREUM",
+        onChainId: nextOnChainId,
+        chainId: resolvedChainId,
+        network: ((network as string) || "ETHEREUM") as any,
         title,
         description,
         buyerId: req.userId!,
@@ -349,7 +406,7 @@ router.get("/escrows", userAuth, async (req: AuthRequest, res: Response) => {
       where.OR = [{ buyerId: req.userId }, { sellerId: req.userId }, { arbiterId: req.userId }];
     }
 
-    if (state) where.state = state as EscrowState;
+    if (state) where.state = state as string;
 
     const pageNum = Math.max(1, Number(page));
     const limitNum = Math.min(50, Math.max(1, Number(limit)));
@@ -385,7 +442,7 @@ router.get("/escrows", userAuth, async (req: AuthRequest, res: Response) => {
 router.get("/escrows/:id", userAuth, async (req: AuthRequest, res: Response) => {
   try {
     const escrow = await prisma.escrow.findUnique({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       include: {
         buyer: { select: { id: true, walletAddress: true, displayName: true } },
         seller: { select: { id: true, walletAddress: true, displayName: true } },
@@ -421,14 +478,9 @@ router.get("/escrows/:id", userAuth, async (req: AuthRequest, res: Response) => 
 
 router.patch("/escrows/:id/state", userAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const { state, txHash } = req.body;
-    const validStates = ["CREATED", "FUNDED", "ACTIVE", "COMPLETED", "DISPUTED", "REFUNDED"];
-    if (!validStates.includes(state)) {
-      res.status(400).json({ error: "Invalid state" });
-      return;
-    }
+    const { state } = req.body;
 
-    const escrow = await prisma.escrow.findUnique({ where: { id: req.params.id } });
+    const escrow = await prisma.escrow.findUnique({ where: { id: req.params.id as string } });
     if (!escrow) {
       res.status(404).json({ error: "Escrow not found" });
       return;
@@ -441,28 +493,32 @@ router.patch("/escrows/:id/state", userAuth, async (req: AuthRequest, res: Respo
       return;
     }
 
+    const allowed = VALID_TRANSITIONS[escrow.state] || [];
+    if (!allowed.includes(state)) {
+      res.status(400).json({
+        error: `Invalid transition: ${escrow.state} -> ${state}. Allowed: ${allowed.join(", ") || "none"}`,
+      });
+      return;
+    }
+
+    if (state === "ACTIVE" && escrow.buyerId !== req.userId) {
+      res.status(403).json({ error: "Only the buyer can activate the escrow" });
+      return;
+    }
+
+    if (state === "REFUNDED" && escrow.buyerId !== req.userId) {
+      res.status(403).json({ error: "Only the buyer can request a refund" });
+      return;
+    }
+
     const updateData: any = { state };
     if (state === "FUNDED") updateData.fundedAt = new Date();
     if (state === "COMPLETED") updateData.completedAt = new Date();
 
     const updated = await prisma.escrow.update({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       data: updateData,
     });
-
-    if (txHash) {
-      await prisma.transaction.create({
-        data: {
-          escrowId: escrow.id,
-          txHash,
-          type: state === "FUNDED" ? "FUND" : state === "REFUNDED" ? "REFUND" : "RELEASE",
-          fromAddress: req.userWallet || "",
-          toAddress: "",
-          amount: escrow.totalAmount,
-          chainId: escrow.chainId,
-        },
-      });
-    }
 
     res.json(updated);
   } catch (err: any) {
@@ -488,7 +544,7 @@ router.get("/tokens", async (req: Request, res: Response) => {
       orderBy: [{ status: "desc" }, { symbol: "asc" }],
     });
     res.json(tokens);
-  } catch (err: any) {
+  } catch {
     res.status(500).json({ error: "Failed to fetch tokens" });
   }
 });
@@ -508,8 +564,6 @@ router.get("/chains", async (_req: Request, res: Response) => {
       { id: "AVALANCHE", name: "Avalanche", chainId: 43114, type: "evm", nativeCurrency: "AVAX", blockExplorer: "https://snowtrace.io" },
       { id: "OPTIMISM", name: "Optimism", chainId: 10, type: "evm", nativeCurrency: "ETH", blockExplorer: "https://optimistic.etherscan.io" },
       { id: "FANTOM", name: "Fantom", chainId: 250, type: "evm", nativeCurrency: "FTM", blockExplorer: "https://ftmscan.com" },
-      { id: "SOLANA", name: "Solana", chainId: 0, type: "svm", nativeCurrency: "SOL", blockExplorer: "https://solscan.io" },
-      { id: "TRON", name: "TRON", chainId: 0, type: "tvm", nativeCurrency: "TRX", blockExplorer: "https://tronscan.org" },
     ],
   });
 });
@@ -520,8 +574,8 @@ router.get("/chains", async (_req: Request, res: Response) => {
 
 router.get("/escrows/:id/deposit", userAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const escrow = await prisma.escrow.findUnique({
-      where: { id: req.params.id },
+    const escrow: any = await prisma.escrow.findUnique({
+      where: { id: req.params.id as string },
       include: { token: true },
     });
     if (!escrow) {
@@ -533,8 +587,6 @@ router.get("/escrows/:id/deposit", userAuth, async (req: AuthRequest, res: Respo
       return;
     }
 
-    const network = escrow.depositNetwork || getNetworkType(escrow.chainId);
-
     res.json({
       escrowId: escrow.id,
       depositAddress: escrow.depositWalletAddr,
@@ -543,18 +595,18 @@ router.get("/escrows/:id/deposit", userAuth, async (req: AuthRequest, res: Respo
       tokenSymbol: escrow.token.symbol,
       expectedAmount: escrow.totalAmount,
       state: escrow.state,
-      network,
+      network: escrow.depositNetwork || "evm",
       chainId: escrow.chainId,
       instructions: `Send exactly ${escrow.totalAmount} ${escrow.token.symbol} to the deposit address: ${escrow.depositWalletAddr}`,
     });
-  } catch (err: any) {
+  } catch {
     res.status(500).json({ error: "Failed to fetch deposit info" });
   }
 });
 
-router.post("/escrows/:id/deposit-wallet", userAuth, async (req: AuthRequest, res: Response) => {
+router.post("/escrows/:id/deposit-wallet", userAuth, depositLimiter, async (req: AuthRequest, res: Response) => {
   try {
-    const escrow = await prisma.escrow.findUnique({ where: { id: req.params.id } });
+    const escrow = await prisma.escrow.findUnique({ where: { id: req.params.id as string } });
     if (!escrow) {
       res.status(404).json({ error: "Escrow not found" });
       return;
@@ -582,7 +634,9 @@ router.post("/escrows/:id/deposit-wallet", userAuth, async (req: AuthRequest, re
       where: { id: escrow.id },
       data: {
         depositWalletAddr: wallet.address,
-        depositNetwork: getNetworkType(escrow.chainId),
+        depositWalletKey: wallet.encryptedPrivateKey,
+        depositNetwork: "evm",
+        derivationIndex: wallet.derivationIndex,
         fundingMethod: "DEPOSIT_TRANSFER",
       },
     });
@@ -603,7 +657,7 @@ router.post("/escrows/:id/deposit-wallet", userAuth, async (req: AuthRequest, re
       success: true,
       depositWallet: {
         address: wallet.address,
-        network: getNetworkType(escrow.chainId),
+        network: "evm",
         chainId: escrow.chainId,
         derivationIndex: wallet.derivationIndex,
       },
@@ -623,7 +677,7 @@ router.post("/escrows/:id/verify-deposit", userAuth, async (req: AuthRequest, re
     }
 
     const escrow = await prisma.escrow.findUnique({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       include: { token: true },
     });
     if (!escrow) {
@@ -666,75 +720,6 @@ router.post("/escrows/:id/verify-deposit", userAuth, async (req: AuthRequest, re
   }
 });
 
-router.post("/escrows/:id/state", userAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const { state, txHash } = req.body;
-    const validStates = ["CREATED", "FUNDED", "ACTIVE", "COMPLETED", "DISPUTED", "REFUNDED"];
-    if (!validStates.includes(state)) {
-      res.status(400).json({ error: "Invalid state" });
-      return;
-    }
-
-    const escrow = await prisma.escrow.findUnique({ where: { id: req.params.id } });
-    if (!escrow) {
-      res.status(404).json({ error: "Escrow not found" });
-      return;
-    }
-
-    const isParticipant =
-      escrow.buyerId === req.userId || escrow.sellerId === req.userId;
-    if (!isParticipant) {
-      res.status(403).json({ error: "Not a participant" });
-      return;
-    }
-
-    const updateData: any = { state };
-    if (state === "FUNDED") updateData.fundedAt = new Date();
-    if (state === "COMPLETED") updateData.completedAt = new Date();
-
-    await prisma.escrow.update({ where: { id: req.params.id }, data: updateData });
-
-    if (txHash) {
-      await prisma.transaction.create({
-        data: {
-          escrowId: escrow.id,
-          txHash,
-          type: state === "FUNDED" ? "FUND" : state === "REFUNDED" ? "REFUND" : "RELEASE",
-          fromAddress: req.userWallet || "",
-          toAddress: "",
-          amount: escrow.totalAmount,
-          chainId: escrow.chainId,
-        },
-      });
-    }
-
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: "Failed to update state" });
-  }
-});
-
-// ══════════════════════════════════════════════════════════════
-//  SUPPORTED CHAINS (public - for frontend wallet selector)
-// ══════════════════════════════════════════════════════════════
-
-router.get("/chains", async (_req: Request, res: Response) => {
-  res.json({
-    chains: [
-      { id: "ETHEREUM", name: "Ethereum", chainId: 1, type: "evm", nativeCurrency: "ETH", icon: "🔷", blockExplorer: "https://etherscan.io" },
-      { id: "BNB_CHAIN", name: "BNB Chain", chainId: 56, type: "evm", nativeCurrency: "BNB", icon: "🟡", blockExplorer: "https://bscscan.com" },
-      { id: "POLYGON", name: "Polygon", chainId: 137, type: "evm", nativeCurrency: "MATIC", icon: "🟣", blockExplorer: "https://polygonscan.com" },
-      { id: "ARBITRUM", name: "Arbitrum One", chainId: 42161, type: "evm", nativeCurrency: "ETH", icon: "🔵", blockExplorer: "https://arbiscan.io" },
-      { id: "BASE", name: "Base", chainId: 8453, type: "evm", nativeCurrency: "ETH", icon: "🔷", blockExplorer: "https://basescan.org" },
-      { id: "AVALANCHE", name: "Avalanche C-Chain", chainId: 43114, type: "evm", nativeCurrency: "AVAX", icon: "🔺", blockExplorer: "https://snowtrace.io" },
-      { id: "OPTIMISM", name: "Optimism", chainId: 10, type: "evm", nativeCurrency: "ETH", icon: "🔴", blockExplorer: "https://optimistic.etherscan.io" },
-      { id: "FANTOM", name: "Fantom", chainId: 250, type: "evm", nativeCurrency: "FTM", icon: "👻", blockExplorer: "https://ftmscan.com" },
-      { id: "SOLANA", name: "Solana", chainId: 0, type: "svm", nativeCurrency: "SOL", icon: "☀️", blockExplorer: "https://solscan.io" },
-      { id: "TRON", name: "TRON", chainId: 0, type: "tvm", nativeCurrency: "TRX", icon: "🔴", blockExplorer: "https://tronscan.org" },
-    ],
-  });
-});
-
 // ══════════════════════════════════════════════════════════════
 //  PRICE FEED (CoinGecko proxy)
 // ══════════════════════════════════════════════════════════════
@@ -754,7 +739,7 @@ router.get("/prices", async (req: Request, res: Response) => {
       return;
     }
 
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=${vs}&include_24hr_change=true&include_market_cap=true`;
+    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=${encodeURIComponent(vs)}&include_24hr_change=true&include_market_cap=true`;
     const response = await fetch(url, {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(8000),
@@ -770,7 +755,7 @@ router.get("/prices", async (req: Request, res: Response) => {
     priceCache.ts = now;
 
     res.json(data);
-  } catch (err: any) {
+  } catch {
     if (priceCache.data && Object.keys(priceCache.data).length > 0) {
       const firstKey = Object.keys(priceCache.data)[0];
       res.json({ ...priceCache.data[firstKey], _cached: true });

@@ -9,6 +9,7 @@ import dexscreenerRouter from "./controllers/dexscreenerController";
 import chatRouter from "./controllers/chatController";
 import transferRouter from "./controllers/transferController";
 import { startBlockchainListener, stopBlockchainListener } from "./services/blockchainListener";
+import { apiLimiter } from "./middleware/rateLimiter";
 
 const prisma = new PrismaClient();
 const app = express();
@@ -43,6 +44,7 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(compression());
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: true, limit: "5mb" }));
+app.use(apiLimiter);
 
 // ── Request Logging (development) ────────────────────
 if (NODE_ENV === "development") {
@@ -64,7 +66,7 @@ app.get("/api/health", async (_req, res) => {
       database: "connected",
       uptime: process.uptime(),
     });
-  } catch (err) {
+  } catch {
     res.status(503).json({
       status: "unhealthy",
       timestamp: new Date().toISOString(),
@@ -77,16 +79,14 @@ app.get("/api/health", async (_req, res) => {
 app.get("/api/chains", (_req, res) => {
   res.json({
     chains: [
-      { id: "ETHEREUM", name: "Ethereum", chainId: 1, type: "evm", nativeCurrency: "ETH", icon: "🔷", blockExplorer: "https://etherscan.io" },
-      { id: "BNB_CHAIN", name: "BNB Chain", chainId: 56, type: "evm", nativeCurrency: "BNB", icon: "🟡", blockExplorer: "https://bscscan.com" },
-      { id: "POLYGON", name: "Polygon", chainId: 137, type: "evm", nativeCurrency: "MATIC", icon: "🟣", blockExplorer: "https://polygonscan.com" },
-      { id: "ARBITRUM", name: "Arbitrum One", chainId: 42161, type: "evm", nativeCurrency: "ETH", icon: "🔵", blockExplorer: "https://arbiscan.io" },
-      { id: "BASE", name: "Base", chainId: 8453, type: "evm", nativeCurrency: "ETH", icon: "🔷", blockExplorer: "https://basescan.org" },
-      { id: "AVALANCHE", name: "Avalanche C-Chain", chainId: 43114, type: "evm", nativeCurrency: "AVAX", icon: "🔺", blockExplorer: "https://snowtrace.io" },
-      { id: "OPTIMISM", name: "Optimism", chainId: 10, type: "evm", nativeCurrency: "ETH", icon: "🔴", blockExplorer: "https://optimistic.etherscan.io" },
-      { id: "FANTOM", name: "Fantom", chainId: 250, type: "evm", nativeCurrency: "FTM", icon: "👻", blockExplorer: "https://ftmscan.com" },
-      { id: "SOLANA", name: "Solana", chainId: 0, type: "svm", nativeCurrency: "SOL", icon: "☀️", blockExplorer: "https://solscan.io" },
-      { id: "TRON", name: "TRON", chainId: 0, type: "tvm", nativeCurrency: "TRX", icon: "🔴", blockExplorer: "https://tronscan.org" },
+      { id: "ETHEREUM", name: "Ethereum", chainId: 1, type: "evm", nativeCurrency: "ETH", blockExplorer: "https://etherscan.io" },
+      { id: "BNB_CHAIN", name: "BNB Chain", chainId: 56, type: "evm", nativeCurrency: "BNB", blockExplorer: "https://bscscan.com" },
+      { id: "POLYGON", name: "Polygon", chainId: 137, type: "evm", nativeCurrency: "MATIC", blockExplorer: "https://polygonscan.com" },
+      { id: "ARBITRUM", name: "Arbitrum One", chainId: 42161, type: "evm", nativeCurrency: "ETH", blockExplorer: "https://arbiscan.io" },
+      { id: "BASE", name: "Base", chainId: 8453, type: "evm", nativeCurrency: "ETH", blockExplorer: "https://basescan.org" },
+      { id: "AVALANCHE", name: "Avalanche C-Chain", chainId: 43114, type: "evm", nativeCurrency: "AVAX", blockExplorer: "https://snowtrace.io" },
+      { id: "OPTIMISM", name: "Optimism", chainId: 10, type: "evm", nativeCurrency: "ETH", blockExplorer: "https://optimistic.etherscan.io" },
+      { id: "FANTOM", name: "Fantom", chainId: 250, type: "evm", nativeCurrency: "FTM", blockExplorer: "https://ftmscan.com" },
     ],
   });
 });
@@ -117,7 +117,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
   res.status(500).json({
     error: "Internal Server Error",
-    ...(NODE_ENV === "development" && { details: err.message, stack: err.stack }),
+    ...(NODE_ENV === "development" && { details: err.message }),
   });
 });
 
@@ -136,12 +136,10 @@ async function startServer(): Promise<void> {
       console.log(`  Port        : ${PORT}`);
       console.log(`  Frontend    : ${FRONTEND_URL}`);
       console.log(`  Health      : http://localhost:${PORT}/api/health`);
-      console.log(`  Chains      : http://localhost:${PORT}/api/chains`);
       console.log("═══════════════════════════════════════════");
       console.log("");
     });
 
-    // Start multi-chain blockchain listener
     if (process.env.ENABLE_BLOCKCHAIN_LISTENER !== "false") {
       await startBlockchainListener();
       console.log("[SurveyDeal] Multi-chain blockchain listener started");

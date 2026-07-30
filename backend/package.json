@@ -32,6 +32,7 @@
     "cors": "^2.8.5",
     "ethers": "^6.13.4",
     "express": "^4.21.1",
+    "express-rate-limit": "^8.6.1",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "tweetnacl": "^1.0.3",

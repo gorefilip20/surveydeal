@@ -12,15 +12,14 @@ const CHAINS = [
   { id: "POLYGON", name: "Polygon", icon: "PLY", chainId: 137, nativeCurrency: "MATIC" },
   { id: "ARBITRUM", name: "Arbitrum", icon: "ARB", chainId: 42161, nativeCurrency: "ETH" },
   { id: "BASE", name: "Base", icon: "BAS", chainId: 8453, nativeCurrency: "ETH" },
-  { id: "SOLANA", name: "Solana", icon: "SOL", chainId: 0, nativeCurrency: "SOL" },
-  { id: "TRON", name: "TRON", icon: "TRX", chainId: 0, nativeCurrency: "TRX" },
   { id: "AVALANCHE", name: "Avalanche", icon: "AVA", chainId: 43114, nativeCurrency: "AVAX" },
+  { id: "OPTIMISM", name: "Optimism", icon: "OPT", chainId: 10, nativeCurrency: "ETH" },
+  { id: "FANTOM", name: "Fantom", icon: "FTM", chainId: 250, nativeCurrency: "FTM" },
 ];
 
 const NETWORK_ABBR: Record<string, string> = {
   ETHEREUM: "ETH", BNB_CHAIN: "BNB", POLYGON: "PLY", ARBITRUM: "ARB",
   BASE: "BAS", AVALANCHE: "AVA", OPTIMISM: "OPT", FANTOM: "FTM",
-  SOLANA: "SOL", TRON: "TRX",
 };
 
 export default function DashboardPage() {

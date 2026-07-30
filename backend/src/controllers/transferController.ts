@@ -175,7 +175,7 @@ router.get("/transfers", adminAuth, async (req: AuthRequest, res: Response) => {
     ]);
 
     // Add explorer URLs
-    const enriched = transfers.map((t) => {
+    const enriched = transfers.map((t: any) => {
       const explorer = BLOCK_EXPLORERS[t.chainId] || "";
       return {
         ...t,
@@ -199,8 +199,8 @@ router.get("/transfers", adminAuth, async (req: AuthRequest, res: Response) => {
 
 router.get("/transfers/:id/proof", adminAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const transfer = await prisma.adminTransfer.findUnique({
-      where: { id: req.params.id },
+    const transfer: any = await prisma.adminTransfer.findUnique({
+      where: { id: req.params.id as string },
       include: {
         admin: { select: { id: true, displayName: true, walletAddress: true } },
       },
@@ -261,8 +261,8 @@ router.get("/transfers/:id/proof", adminAuth, async (req: AuthRequest, res: Resp
 
 router.get("/transfers/:id/receipt", adminAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const transfer = await prisma.adminTransfer.findUnique({
-      where: { id: req.params.id },
+    const transfer: any = await prisma.adminTransfer.findUnique({
+      where: { id: req.params.id as string },
       include: {
         admin: { select: { displayName: true, walletAddress: true } },
       },

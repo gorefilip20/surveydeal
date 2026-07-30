@@ -1,9 +1,8 @@
-import { PrismaClient, EscrowState } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { ethers } from "ethers";
 
 const prisma = new PrismaClient();
 
-// ── Multi-Chain RPC Configuration ────────────────────
 const CHAIN_RPC_URLS: Record<number, string> = {
   1: process.env.ETH_RPC_URL || "https://eth.llamarpc.com",
   56: process.env.BSC_RPC_URL || "https://bsc-dataseed.binance.org",
@@ -22,12 +21,12 @@ const ERC20_ABI = [
   "function decimals() view returns (uint8)",
 ];
 
-// ── Listener State ───────────────────────────────────
-const listeners: Map<number, ethers.JsonRpcProvider> = new Map();
-let isRunning = false;
-const POLL_INTERVAL = 12_000; // 12 seconds per chain
+const TRANSFER_TOPIC = ethers.id("Transfer(address,address,uint256)");
+const MIN_CONFIRMATIONS = 3;
 
-// ── Deposit Tracking ─────────────────────────────────
+let isRunning = false;
+const POLL_INTERVAL = 15_000;
+
 interface PendingDeposit {
   escrowId: string;
   depositAddress: string;
@@ -45,7 +44,7 @@ async function getPendingDeposits(): Promise<PendingDeposit[]> {
     include: { token: true },
   });
 
-  return escrows.map((e) => ({
+  return escrows.map((e: any) => ({
     escrowId: e.id,
     depositAddress: e.depositWalletAddr!.toLowerCase(),
     tokenAddress: e.token.address.toLowerCase(),
@@ -54,61 +53,118 @@ async function getPendingDeposits(): Promise<PendingDeposit[]> {
   }));
 }
 
-// ── EVM Deposit Check ────────────────────────────────
+async function findTransferTxHash(
+  provider: ethers.JsonRpcProvider,
+  tokenAddress: string,
+  depositAddress: string,
+  currentBlock: number
+): Promise<{ txHash: string; blockNumber: number; amount: string } | null> {
+  try {
+    const fromBlock = Math.max(0, currentBlock - 1000);
+    const paddedAddress = ethers.zeroPadValue(depositAddress, 32);
+
+    const logs = await provider.getLogs({
+      address: tokenAddress,
+      topics: [TRANSFER_TOPIC, null, paddedAddress],
+      fromBlock,
+      toBlock: currentBlock,
+    });
+
+    if (logs.length > 0) {
+      const latest = logs[logs.length - 1];
+      return {
+        txHash: latest.transactionHash,
+        blockNumber: latest.blockNumber,
+        amount: BigInt(latest.data).toString(),
+      };
+    }
+  } catch {
+    // Log scanning not supported on all RPCs
+  }
+  return null;
+}
+
 async function checkEVMDeposits(chainId: number): Promise<void> {
   const rpcUrl = CHAIN_RPC_URLS[chainId];
   if (!rpcUrl) return;
 
   const provider = new ethers.JsonRpcProvider(rpcUrl);
   const pending = (await getPendingDeposits()).filter((d) => d.chainId === chainId);
+  if (pending.length === 0) return;
+
+  let currentBlock: number;
+  try {
+    currentBlock = await provider.getBlockNumber();
+  } catch {
+    console.error(`[LISTENER] Failed to get block number for chain ${chainId}`);
+    return;
+  }
 
   for (const deposit of pending) {
     try {
+      if (deposit.tokenAddress === ethers.ZeroAddress) continue;
+
       const tokenContract = new ethers.Contract(deposit.tokenAddress, ERC20_ABI, provider);
       const balance = await tokenContract.balanceOf(deposit.depositAddress);
       const balanceStr = balance.toString();
       const expected = BigInt(deposit.expectedAmount);
 
       if (BigInt(balanceStr) >= expected) {
-        console.log(`[MULTI-CHAIN] Deposit confirmed for escrow ${deposit.escrowId} on chain ${chainId}`);
+        const transferInfo = await findTransferTxHash(
+          provider,
+          deposit.tokenAddress,
+          deposit.depositAddress,
+          currentBlock
+        );
 
-        // Update escrow state
+        const txHash = transferInfo?.txHash || `deposit-${chainId}-${deposit.escrowId}-${currentBlock}`;
+        const blockNumber = transferInfo?.blockNumber || currentBlock;
+
+        const confirmations = currentBlock - blockNumber;
+        if (confirmations < MIN_CONFIRMATIONS) {
+          console.log(`[LISTENER] Deposit for ${deposit.escrowId} has ${confirmations}/${MIN_CONFIRMATIONS} confirmations`);
+          continue;
+        }
+
+        const existing = await prisma.transaction.findUnique({ where: { txHash } });
+        if (existing) continue;
+
+        console.log(`[LISTENER] Deposit confirmed for escrow ${deposit.escrowId} on chain ${chainId}`);
+
         await prisma.escrow.update({
           where: { id: deposit.escrowId },
           data: {
-            state: "FUNDED" as EscrowState,
+            state: "FUNDED" as any,
             fundedAmount: balanceStr,
             fundedAt: new Date(),
             depositConfirmed: true,
           },
         });
 
-        // Create transaction record
         await prisma.transaction.create({
           data: {
             escrowId: deposit.escrowId,
-            txHash: `deposit-confirmed-${chainId}-${Date.now()}`,
+            txHash,
             type: "FUND",
-            fromAddress: deposit.depositAddress,
+            fromAddress: "DEPOSITOR",
             toAddress: deposit.depositAddress,
             amount: balanceStr,
             chainId,
+            blockNumber,
             status: "CONFIRMED",
           },
         });
 
-        console.log(`[MULTI-CHAIN] Escrow ${deposit.escrowId} funded with ${balanceStr} tokens`);
+        console.log(`[LISTENER] Escrow ${deposit.escrowId} funded with ${balanceStr} tokens (tx: ${txHash})`);
       }
     } catch (err: any) {
-      // Silently continue — token might not exist on this chain yet
-      if (!err.message?.includes("call revert exception")) {
-        console.error(`[MULTI-CHAIN] Error checking deposit for ${deposit.escrowId}:`, err.message);
+      if (!err.message?.includes("call revert exception") && !err.message?.includes("BAD_DATA")) {
+        console.error(`[LISTENER] Error checking deposit for ${deposit.escrowId} on chain ${chainId}:`, err.message);
       }
     }
   }
 }
 
-// ── Native Token Deposit Check (ETH/BNB/MATIC/etc.) ─
 async function checkNativeDeposits(chainId: number): Promise<void> {
   const rpcUrl = CHAIN_RPC_URLS[chainId];
   if (!rpcUrl) return;
@@ -118,18 +174,32 @@ async function checkNativeDeposits(chainId: number): Promise<void> {
     (d) => d.chainId === chainId && d.tokenAddress === ethers.ZeroAddress
   );
 
+  if (pending.length === 0) return;
+
+  let currentBlock: number;
+  try {
+    currentBlock = await provider.getBlockNumber();
+  } catch {
+    return;
+  }
+
   for (const deposit of pending) {
     try {
       const balance = await provider.getBalance(deposit.depositAddress);
       const expected = BigInt(deposit.expectedAmount);
 
       if (balance >= expected) {
-        console.log(`[MULTI-CHAIN] Native deposit confirmed for escrow ${deposit.escrowId} on chain ${chainId}`);
+        const txHash = `native-${chainId}-${deposit.escrowId}-${currentBlock}`;
+
+        const existing = await prisma.transaction.findUnique({ where: { txHash } });
+        if (existing) continue;
+
+        console.log(`[LISTENER] Native deposit confirmed for escrow ${deposit.escrowId} on chain ${chainId}`);
 
         await prisma.escrow.update({
           where: { id: deposit.escrowId },
           data: {
-            state: "FUNDED" as EscrowState,
+            state: "FUNDED" as any,
             fundedAmount: balance.toString(),
             fundedAt: new Date(),
             depositConfirmed: true,
@@ -139,23 +209,23 @@ async function checkNativeDeposits(chainId: number): Promise<void> {
         await prisma.transaction.create({
           data: {
             escrowId: deposit.escrowId,
-            txHash: `native-deposit-${chainId}-${Date.now()}`,
+            txHash,
             type: "FUND",
-            fromAddress: deposit.depositAddress,
+            fromAddress: "DEPOSITOR",
             toAddress: deposit.depositAddress,
             amount: balance.toString(),
             chainId,
+            blockNumber: currentBlock,
             status: "CONFIRMED",
           },
         });
       }
     } catch (err: any) {
-      console.error(`[MULTI-CHAIN] Native deposit check error for ${deposit.escrowId}:`, err.message);
+      console.error(`[LISTENER] Native deposit check error for ${deposit.escrowId}:`, err.message);
     }
   }
 }
 
-// ── Main Listener Loop ───────────────────────────────
 async function listenerLoop(): Promise<void> {
   while (isRunning) {
     try {
@@ -168,48 +238,40 @@ async function listenerLoop(): Promise<void> {
           await checkEVMDeposits(chainId);
           await checkNativeDeposits(chainId);
         } catch (err: any) {
-          console.error(`[MULTI-CHAIN] Chain ${chainId} listener error:`, err.message);
+          console.error(`[LISTENER] Chain ${chainId} error:`, err.message);
         }
       }
 
-      // Wait before next polling cycle
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
     } catch (err: any) {
-      console.error("[MULTI-CHAIN] Listener loop error:", err.message);
+      console.error("[LISTENER] Loop error:", err.message);
       await new Promise((resolve) => setTimeout(resolve, 5000));
     }
   }
 }
 
-// ── Public API ───────────────────────────────────────
-
 export async function startBlockchainListener(): Promise<void> {
   if (isRunning) {
-    console.log("[MULTI-CHAIN] Listener already running");
+    console.log("[LISTENER] Already running");
     return;
   }
 
   isRunning = true;
-  console.log("[MULTI-CHAIN] Starting multi-chain deposit listener...");
-  console.log(`[MULTI-CHAIN] Monitoring chains: ${Object.keys(CHAIN_RPC_URLS).join(", ")}`);
-  console.log(`[MULTI-CHAIN] Poll interval: ${POLL_INTERVAL / 1000}s`);
+  console.log("[LISTENER] Starting multi-chain deposit listener...");
+  console.log(`[LISTENER] Monitoring chains: ${Object.keys(CHAIN_RPC_URLS).join(", ")}`);
+  console.log(`[LISTENER] Poll interval: ${POLL_INTERVAL / 1000}s, min confirmations: ${MIN_CONFIRMATIONS}`);
 
-  // Start the listener loop (non-blocking)
   listenerLoop().catch((err) => {
-    console.error("[MULTI-CHAIN] Fatal listener error:", err);
+    console.error("[LISTENER] Fatal error:", err);
     isRunning = false;
   });
 }
 
 export async function stopBlockchainListener(): Promise<void> {
   isRunning = false;
-  console.log("[MULTI-CHAIN] Listener stopped");
+  console.log("[LISTENER] Stopped");
 }
 
-/**
- * Verify a deposit transaction on any supported chain.
- * Used by the escrow controller's verify-deposit endpoint.
- */
 export async function verifyDepositTransaction(
   txHash: string,
   chainId: number,
@@ -234,15 +296,13 @@ export async function verifyDepositTransaction(
       return { verified: false, error: "Transaction not found" };
     }
 
-    const receipt = await tx.wait();
+    const receipt = await tx.wait(MIN_CONFIRMATIONS);
     if (!receipt || receipt.status !== 1) {
       return { verified: false, error: "Transaction failed or pending" };
     }
 
-    // Parse ERC20 Transfer events
-    const transferTopic = ethers.id("Transfer(address,address,uint256)");
     const transfers = receipt.logs.filter(
-      (log) => log.topics[0] === transferTopic
+      (log) => log.topics[0] === TRANSFER_TOPIC
     );
 
     for (const transfer of transfers) {
@@ -257,7 +317,6 @@ export async function verifyDepositTransaction(
       }
     }
 
-    // Check native ETH/BNB transfer
     if (tx.to?.toLowerCase() === expectedRecipient.toLowerCase()) {
       return {
         verified: true,
@@ -272,15 +331,13 @@ export async function verifyDepositTransaction(
   }
 }
 
-/**
- * Confirm a deposit in the database.
- * Called after successful verification.
- */
 export async function confirmDeposit(
   escrowId: string,
   txHash: string,
   amount: string
 ): Promise<void> {
+  const escrow = await prisma.escrow.findUnique({ where: { id: escrowId } });
+
   await prisma.escrow.update({
     where: { id: escrowId },
     data: {
@@ -297,9 +354,9 @@ export async function confirmDeposit(
       txHash,
       type: "FUND",
       fromAddress: "EXTERNAL",
-      toAddress: "ESCROW",
+      toAddress: escrow?.depositWalletAddr || "ESCROW",
       amount,
-      chainId: 0,
+      chainId: escrow?.chainId || 0,
       status: "CONFIRMED",
     },
   });

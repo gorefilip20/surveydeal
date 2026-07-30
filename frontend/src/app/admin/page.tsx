@@ -87,8 +87,6 @@ const NETWORK_ABBR: Record<string, string> = {
   AVALANCHE: "AVAX",
   OPTIMISM: "OP",
   FANTOM: "FTM",
-  SOLANA: "SOL",
-  TRON: "TRX",
 };
 
 export default function AdminDashboard() {

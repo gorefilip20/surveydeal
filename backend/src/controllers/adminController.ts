@@ -1,16 +1,17 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { PrismaClient, EscrowState, Dispoutcome, ChainNetwork } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { ethers } from "ethers";
-import { z } from "zod";
+import { releaseMilestone, releaseAllMilestones } from "../services/escrowRelease";
+import { authLimiter } from "../middleware/rateLimiter";
 
 const prisma = new PrismaClient();
 const router = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET!;
-const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY!;
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS!;
-const RPC_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable must be set");
+}
 
 // ══════════════════════════════════════════════════════════════
 //  AUTH MIDDLEWARE
@@ -28,7 +29,7 @@ function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
     return;
   }
   try {
-    const payload = jwt.verify(header.slice(7), JWT_SECRET) as {
+    const payload = jwt.verify(header.slice(7), JWT_SECRET!) as {
       sub: string;
       wallet: string;
       isAdmin: boolean;
@@ -49,15 +50,19 @@ function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
 //  ADMIN AUTH ENDPOINTS
 // ══════════════════════════════════════════════════════════════
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@surveydeal.io";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "SurveyDeal@2024";
-const ADMIN_WALLET = "0xf39Fd6e51aad88F6F4ce6aB8827279cFfFb92266";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const ADMIN_WALLET = process.env.ADMIN_WALLET || "0xf39Fd6e51aad88F6F4ce6aB8827279cFfFb92266";
 
-router.post("/auth/simple-login", async (req: Request, res: Response) => {
+router.post("/auth/simple-login", authLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
       res.status(400).json({ error: "Email and password are required" });
+      return;
+    }
+    if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+      res.status(500).json({ error: "Admin credentials not configured" });
       return;
     }
     if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
@@ -88,7 +93,7 @@ router.post("/auth/simple-login", async (req: Request, res: Response) => {
 
     const token = jwt.sign(
       { sub: user.id, wallet: user.walletAddress, isAdmin: true },
-      JWT_SECRET,
+      JWT_SECRET!,
       { expiresIn: "8h" }
     );
 
@@ -107,7 +112,7 @@ router.post("/auth/simple-login", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/auth/login", async (req: Request, res: Response) => {
+router.post("/auth/login", authLimiter, async (req: Request, res: Response) => {
   try {
     const { walletAddress, signature, message } = req.body;
 
@@ -128,7 +133,7 @@ router.post("/auth/login", async (req: Request, res: Response) => {
 
     const token = jwt.sign(
       { sub: user.id, wallet: user.walletAddress, isAdmin: true },
-      JWT_SECRET,
+      JWT_SECRET!,
       { expiresIn: "24h" }
     );
 
@@ -205,7 +210,7 @@ router.get("/analytics/overview", authMiddleware, async (_req: AuthRequest, res:
 
 router.get("/user-assets", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const { search, network, page = "1", limit = "20" } = req.query;
+    const { search, page = "1", limit = "20" } = req.query;
 
     const where: any = {};
     if (search) {
@@ -267,7 +272,7 @@ router.get("/user-assets", authMiddleware, async (req: AuthRequest, res: Respons
       prisma.user.count({ where }),
     ]);
 
-    const userAssets = users.map((u) => {
+    const userAssets = users.map((u: any) => {
       let totalBuyVolume = BigInt(0);
       let totalSellVolume = BigInt(0);
       let activeBuyEscrows = 0;
@@ -327,11 +332,11 @@ router.get("/user-assets", authMiddleware, async (req: AuthRequest, res: Respons
 router.get("/users/:id/wallets", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const wallets = await prisma.userWallet.findMany({
-      where: { userId: req.params.id },
+      where: { userId: req.params.id as string as string },
       orderBy: [{ isPreferred: "desc" }, { createdAt: "desc" }],
     });
     res.json(wallets);
-  } catch (err: any) {
+  } catch {
     res.status(500).json({ error: "Failed to fetch wallets" });
   }
 });
@@ -346,15 +351,15 @@ router.post("/users/:id/wallets", authMiddleware, async (req: AuthRequest, res: 
 
     const wallet = await prisma.userWallet.create({
       data: {
-        userId: req.params.id,
+        userId: req.params.id as string as string,
         address: address.toLowerCase(),
-        network: network as ChainNetwork,
+        network: network as any,
         label,
         isPreferred: isPreferred || false,
       },
     });
 
-    await auditLog(req.adminId!, "ADD_USER_WALLET", "wallet", wallet.id, { address, network }, req.ip);
+    await auditLog(req.adminId!, "ADD_USER_WALLET", "wallet", wallet.id, { address, network }, req.ip || "");
     res.status(201).json(wallet);
   } catch (err: any) {
     if (err.code === "P2002") {
@@ -369,38 +374,38 @@ router.patch("/users/:userId/wallets/:walletId", authMiddleware, async (req: Aut
   try {
     const { isPreferred, label } = req.body;
     const wallet = await prisma.userWallet.update({
-      where: { id: req.params.walletId },
+      where: { id: req.params.walletId as string },
       data: {
         ...(isPreferred !== undefined && { isPreferred }),
         ...(label !== undefined && { label }),
       },
     });
     res.json(wallet);
-  } catch (err: any) {
+  } catch {
     res.status(500).json({ error: "Failed to update wallet" });
   }
 });
 
 router.delete("/users/:userId/wallets/:walletId", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    await prisma.userWallet.delete({ where: { id: req.params.walletId } });
-    await auditLog(req.adminId!, "REMOVE_USER_WALLET", "wallet", req.params.walletId, {}, req.ip);
+    await prisma.userWallet.delete({ where: { id: req.params.walletId as string } });
+    await auditLog(req.adminId!, "REMOVE_USER_WALLET", "wallet", req.params.walletId as string, {}, req.ip || "");
     res.json({ success: true });
-  } catch (err: any) {
+  } catch {
     res.status(500).json({ error: "Failed to delete wallet" });
   }
 });
 
 // ══════════════════════════════════════════════════════════════
-//  ADMIN APPROVAL FOR ESCROWS
+//  ADMIN MILESTONE RELEASE (CUSTODIAL)
 // ══════════════════════════════════════════════════════════════
 
 router.post("/escrows/:id/approve-milestone/:milestoneIndex", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const escrowId = req.params.id;
-    const milestoneIndex = parseInt(req.params.milestoneIndex);
+    const escrowId = req.params.id as string;
+    const milestoneIndex = parseInt(req.params.milestoneIndex as string);
 
-    const escrow = await prisma.escrow.findUnique({
+    const escrow: any = await prisma.escrow.findUnique({
       where: { id: escrowId },
       include: { milestones: true, token: true },
     });
@@ -410,7 +415,7 @@ router.post("/escrows/:id/approve-milestone/:milestoneIndex", authMiddleware, as
       return;
     }
 
-    const milestone = escrow.milestones.find((m) => m.index === milestoneIndex);
+    const milestone = escrow.milestones.find((m: any) => m.index === milestoneIndex);
     if (!milestone) {
       res.status(404).json({ error: "Milestone not found" });
       return;
@@ -421,77 +426,42 @@ router.post("/escrows/:id/approve-milestone/:milestoneIndex", authMiddleware, as
       return;
     }
 
-    // Call smart contract adminApproveMilestone
-    const provider = new ethers.JsonRpcProvider(RPC_URL);
-    const wallet = new ethers.Wallet(ADMIN_PRIVATE_KEY, provider);
-
-    // Import contract ABI
-    const ESCROW_ABI = [
-      "function adminApproveMilestone(uint256 escrowId, uint256 milestoneIndex) external",
-      "function adminForceRelease(uint256 escrowId, uint256 milestoneIndex) external",
-    ];
-
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, ESCROW_ABI, wallet);
-
-    let tx;
-    const { force } = req.body;
-
-    if (force) {
-      tx = await contract.adminForceRelease(escrow.onChainId, milestoneIndex);
-    } else {
-      tx = await contract.adminApproveMilestone(escrow.onChainId, milestoneIndex);
+    if (!["FUNDED", "ACTIVE"].includes(escrow.state)) {
+      res.status(400).json({ error: `Cannot release funds from escrow in state: ${escrow.state}` });
+      return;
     }
 
-    const receipt = await tx.wait();
+    const result = await releaseMilestone(escrowId, milestoneIndex, req.adminId!);
 
-    // Update milestone in DB
-    await prisma.milestone.update({
-      where: { id: milestone.id },
-      data: {
-        adminApproved: true,
-        released: true,
-        releasedAt: new Date(),
-      },
-    });
-
-    // Create transaction record
-    await prisma.transaction.create({
-      data: {
-        escrowId: escrow.id,
-        txHash: receipt.hash,
-        type: "ADMIN_RELEASE",
-        fromAddress: CONTRACT_ADDRESS,
-        toAddress: escrow.sellerId,
-        amount: milestone.amount,
-        chainId: escrow.chainId,
-        blockNumber: receipt.blockNumber,
-      },
-    });
+    if (!result.success) {
+      res.status(500).json({ error: result.error });
+      return;
+    }
 
     await auditLog(
       req.adminId!,
-      force ? "ADMIN_FORCE_RELEASE" : "ADMIN_APPROVE_MILESTONE",
+      "ADMIN_RELEASE_MILESTONE",
       "escrow",
       escrowId,
-      { milestoneIndex, txHash: receipt.hash, force },
+      { milestoneIndex, txHash: result.txHash },
       req.ip
     );
 
     res.json({
       success: true,
-      txHash: receipt.hash,
-      blockNumber: receipt.blockNumber,
+      txHash: result.txHash,
+      blockNumber: result.blockNumber,
       milestoneIndex,
     });
   } catch (err: any) {
     console.error("[ADMIN APPROVE MILESTONE]", err);
-    res.status(500).json({ error: "Failed to approve milestone", details: err.message });
+    res.status(500).json({ error: "Failed to release milestone", details: err.message });
   }
 });
 
 router.post("/escrows/:id/approve-all", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const escrowId = req.params.id;
+    const escrowId = req.params.id as string;
 
     const escrow = await prisma.escrow.findUnique({
       where: { id: escrowId },
@@ -503,34 +473,29 @@ router.post("/escrows/:id/approve-all", authMiddleware, async (req: AuthRequest,
       return;
     }
 
-    const provider = new ethers.JsonRpcProvider(RPC_URL);
-    const wallet = new ethers.Wallet(ADMIN_PRIVATE_KEY, provider);
+    if (!["FUNDED", "ACTIVE"].includes(escrow.state)) {
+      res.status(400).json({ error: `Cannot release funds from escrow in state: ${escrow.state}` });
+      return;
+    }
 
-    const ESCROW_ABI = [
-      "function adminApproveAllMilestones(uint256 escrowId) external",
-    ];
+    const result = await releaseAllMilestones(escrowId, req.adminId!);
 
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, ESCROW_ABI, wallet);
-    const tx = await contract.adminApproveAllMilestones(escrow.onChainId);
-    const receipt = await tx.wait();
+    if (!result.success) {
+      res.status(500).json({ error: result.error });
+      return;
+    }
 
-    // Update all unreleased milestones
-    await prisma.milestone.updateMany({
-      where: { escrowId, released: false },
-      data: { adminApproved: true, released: true, releasedAt: new Date() },
-    });
+    await auditLog(req.adminId!, "ADMIN_RELEASE_ALL_MILESTONES", "escrow", escrowId, { txHash: result.txHash }, req.ip || "");
 
-    await auditLog(req.adminId!, "ADMIN_APPROVE_ALL_MILESTONES", "escrow", escrowId, { txHash: receipt.hash }, req.ip);
-
-    res.json({ success: true, txHash: receipt.hash });
+    res.json({ success: true, txHash: result.txHash, blockNumber: result.blockNumber });
   } catch (err: any) {
     console.error("[ADMIN APPROVE ALL]", err);
-    res.status(500).json({ error: "Failed to approve all milestones", details: err.message });
+    res.status(500).json({ error: "Failed to release all milestones", details: err.message });
   }
 });
 
 // ══════════════════════════════════════════════════════════════
-//  EXISTING ADMIN ENDPOINTS (simplified, unchanged logic)
+//  ADMIN ESCROW & USER MANAGEMENT
 // ══════════════════════════════════════════════════════════════
 
 router.get("/escrows", authMiddleware, async (req: AuthRequest, res: Response) => {
@@ -538,8 +503,8 @@ router.get("/escrows", authMiddleware, async (req: AuthRequest, res: Response) =
     const { state, network, search, page = "1", limit = "20", sortBy = "createdAt", sortOrder = "desc" } = req.query;
 
     const where: any = {};
-    if (state) where.state = state as EscrowState;
-    if (network) where.network = network as ChainNetwork;
+    if (state) where.state = state as string;
+    if (network) where.network = network as string;
 
     if (search) {
       where.OR = [
@@ -588,7 +553,7 @@ router.get("/escrows", authMiddleware, async (req: AuthRequest, res: Response) =
 router.get("/escrows/:id", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const escrow = await prisma.escrow.findUnique({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       include: {
         buyer: { select: { id: true, walletAddress: true, displayName: true, isFrozen: true, wallets: true } },
         seller: { select: { id: true, walletAddress: true, displayName: true, isFrozen: true, wallets: true } },
@@ -681,7 +646,7 @@ router.patch("/users/:id/status", authMiddleware, async (req: AuthRequest, res: 
       return;
     }
 
-    const targetUser = await prisma.user.findUnique({ where: { id: req.params.id } });
+    const targetUser = await prisma.user.findUnique({ where: { id: req.params.id as string } });
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;
@@ -692,9 +657,9 @@ router.patch("/users/:id/status", authMiddleware, async (req: AuthRequest, res: 
     }
 
     const isFrozen = status === "FROZEN";
-    await prisma.user.update({ where: { id: req.params.id }, data: { isFrozen } });
+    await prisma.user.update({ where: { id: req.params.id as string }, data: { isFrozen } });
 
-    await auditLog(req.adminId!, isFrozen ? "FREEZE_USER" : "UNFREEZE_USER", "user", req.params.id, { reason, walletAddress: targetUser.walletAddress }, req.ip);
+    await auditLog(req.adminId!, isFrozen ? "FREEZE_USER" : "UNFREEZE_USER", "user", req.params.id as string, { reason, walletAddress: targetUser.walletAddress }, req.ip || "");
 
     res.json({ success: true, user: { id: targetUser.id, walletAddress: targetUser.walletAddress, isFrozen } });
   } catch (err: any) {
@@ -710,16 +675,14 @@ router.patch("/users/:id/status", authMiddleware, async (req: AuthRequest, res: 
 router.get("/chains", authMiddleware, async (_req: AuthRequest, res: Response) => {
   res.json({
     chains: [
-      { id: "ETHEREUM", name: "Ethereum", chainId: 1, type: "evm", rpcUrl: "https://eth.llamarpc.com", blockExplorer: "https://etherscan.io", nativeCurrency: "ETH" },
-      { id: "BNB_CHAIN", name: "BNB Chain", chainId: 56, type: "evm", rpcUrl: "https://bsc-dataseed.binance.org", blockExplorer: "https://bscscan.com", nativeCurrency: "BNB" },
-      { id: "POLYGON", name: "Polygon", chainId: 137, type: "evm", rpcUrl: "https://polygon-rpc.com", blockExplorer: "https://polygonscan.com", nativeCurrency: "MATIC" },
-      { id: "ARBITRUM", name: "Arbitrum One", chainId: 42161, type: "evm", rpcUrl: "https://arb1.arbitrum.io/rpc", blockExplorer: "https://arbiscan.io", nativeCurrency: "ETH" },
-      { id: "BASE", name: "Base", chainId: 8453, type: "evm", rpcUrl: "https://mainnet.base.org", blockExplorer: "https://basescan.org", nativeCurrency: "ETH" },
-      { id: "AVALANCHE", name: "Avalanche C-Chain", chainId: 43114, type: "evm", rpcUrl: "https://api.avax.network/ext/bc/C/rpc", blockExplorer: "https://snowtrace.io", nativeCurrency: "AVAX" },
-      { id: "OPTIMISM", name: "Optimism", chainId: 10, type: "evm", rpcUrl: "https://mainnet.optimism.io", blockExplorer: "https://optimistic.etherscan.io", nativeCurrency: "ETH" },
-      { id: "FANTOM", name: "Fantom", chainId: 250, type: "evm", rpcUrl: "https://rpc.ftm.tools", blockExplorer: "https://ftmscan.com", nativeCurrency: "FTM" },
-      { id: "SOLANA", name: "Solana", chainId: 0, type: "svm", rpcUrl: "https://api.mainnet-beta.solana.com", blockExplorer: "https://solscan.io", nativeCurrency: "SOL" },
-      { id: "TRON", name: "TRON", chainId: 0, type: "tvm", rpcUrl: "https://api.trongrid.io", blockExplorer: "https://tronscan.org", nativeCurrency: "TRX" },
+      { id: "ETHEREUM", name: "Ethereum", chainId: 1, type: "evm", blockExplorer: "https://etherscan.io", nativeCurrency: "ETH" },
+      { id: "BNB_CHAIN", name: "BNB Chain", chainId: 56, type: "evm", blockExplorer: "https://bscscan.com", nativeCurrency: "BNB" },
+      { id: "POLYGON", name: "Polygon", chainId: 137, type: "evm", blockExplorer: "https://polygonscan.com", nativeCurrency: "MATIC" },
+      { id: "ARBITRUM", name: "Arbitrum One", chainId: 42161, type: "evm", blockExplorer: "https://arbiscan.io", nativeCurrency: "ETH" },
+      { id: "BASE", name: "Base", chainId: 8453, type: "evm", blockExplorer: "https://basescan.org", nativeCurrency: "ETH" },
+      { id: "AVALANCHE", name: "Avalanche C-Chain", chainId: 43114, type: "evm", blockExplorer: "https://snowtrace.io", nativeCurrency: "AVAX" },
+      { id: "OPTIMISM", name: "Optimism", chainId: 10, type: "evm", blockExplorer: "https://optimistic.etherscan.io", nativeCurrency: "ETH" },
+      { id: "FANTOM", name: "Fantom", chainId: 250, type: "evm", blockExplorer: "https://ftmscan.com", nativeCurrency: "FTM" },
     ],
   });
 });
@@ -738,7 +701,7 @@ async function auditLog(
 ) {
   try {
     await prisma.adminAuditLog.create({
-      data: { adminId, action, entityType, entityId, details, ipAddress },
+      data: { adminId, action, entityType, entityId, details: details as any, ipAddress },
     });
   } catch (err) {
     console.error("[AUDIT LOG ERROR]", err);
@@ -764,7 +727,7 @@ router.get("/audit-log", authMiddleware, async (req: AuthRequest, res: Response)
       logs,
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
     });
-  } catch (err: any) {
+  } catch {
     res.status(500).json({ error: "Failed to fetch audit log" });
   }
 });
