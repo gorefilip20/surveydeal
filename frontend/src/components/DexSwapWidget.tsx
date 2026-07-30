@@ -21,19 +21,6 @@ interface DexConfig {
 
 const DEX_AGGREGATORS: DexConfig[] = [
   {
-    name: "Jupiter",
-    chainIds: [0],
-    getSwapUrl: ({ inputToken, outputToken }) => {
-      const base = "https://jup.ag/swap";
-      const params = new URLSearchParams();
-      if (inputToken) params.set("inputMint", inputToken);
-      if (outputToken) params.set("outputMint", outputToken);
-      return params.toString() ? `${base}?${params}` : base;
-    },
-    color: "from-green-400 to-emerald-500",
-    description: "Solana DEX aggregator — best rates across all Solana DEXs",
-  },
-  {
     name: "Uniswap",
     chainIds: [1, 42161, 8453, 137, 10],
     getSwapUrl: ({ chainId, inputToken, outputToken }) => {
@@ -63,7 +50,7 @@ const DEX_AGGREGATORS: DexConfig[] = [
   },
   {
     name: "1inch",
-    chainIds: [1, 56, 42161, 137, 10, 8453],
+    chainIds: [1, 56, 42161, 137, 10, 8453, 43114],
     getSwapUrl: ({ chainId, inputToken, outputToken }) => {
       const chainName = get1inchChainName(chainId);
       const base = `https://app.1inch.io/#/${chainName}/simple/swap`;
@@ -75,7 +62,7 @@ const DEX_AGGREGATORS: DexConfig[] = [
   },
   {
     name: "ParaSwap",
-    chainIds: [1, 56, 42161, 137, 10, 8453],
+    chainIds: [1, 56, 42161, 137, 10, 8453, 43114],
     getSwapUrl: ({ chainId, inputToken, outputToken }) => {
       const base = "https://app.paraswap.io";
       const params = new URLSearchParams();
@@ -100,7 +87,7 @@ function getPancakeChainName(chainId: number): string {
 }
 
 function get1inchChainName(chainId: number): string {
-  const map: Record<number, string> = { 1: "1", 56: "56", 42161: "42161", 137: "137", 10: "10", 8453: "8453" };
+  const map: Record<number, string> = { 1: "1", 56: "56", 42161: "42161", 137: "137", 10: "10", 8453: "8453", 43114: "43114" };
   return map[chainId] || "1";
 }
 
@@ -157,6 +144,8 @@ const CHAIN_NAMES: Record<number, string> = {
   8453: "Base",
   137: "Polygon",
   10: "Optimism",
+  43114: "Avalanche",
+  250: "Fantom",
   31337: "Local Testnet",
 };
 

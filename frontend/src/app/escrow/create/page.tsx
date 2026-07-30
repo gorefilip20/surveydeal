@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Plus, X, Check, Search, AlertTriangle } from "lucide-react";
+import WalletLogin from "@/components/WalletLogin";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
@@ -102,7 +103,7 @@ export default function CreateEscrowPage() {
           address: pair.baseToken?.address || "",
           name: pair.baseToken?.name || "Unknown",
           symbol: pair.baseToken?.symbol || "???",
-          chainId: pair.chainId === "bsc" ? 56 : pair.chainId === "ethereum" ? 1 : pair.chainId === "polygon" ? 137 : pair.chainId === "arbitrum" ? 42161 : pair.chainId === "base" ? 8453 : 0,
+          chainId: ({ bsc: 56, ethereum: 1, polygon: 137, arbitrum: 42161, base: 8453, avalanche: 43114, optimism: 10, fantom: 250 } as Record<string, number>)[pair.chainId] || 0,
           price: pair.priceUsd ? parseFloat(pair.priceUsd) : undefined,
           volume24h: pair.volume?.h24,
           liquidity: pair.liquidity?.usd,
@@ -156,7 +157,6 @@ export default function CreateEscrowPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          onChainId: 0,
           chainId: selectedChain.chainId,
           network: selectedChain.id,
           title,
@@ -194,6 +194,10 @@ export default function CreateEscrowPage() {
   ];
 
   const amountsMatch = Math.abs(milestoneTotal - parseFloat(totalAmount || "0")) < 0.0001;
+
+  if (!token) {
+    return <WalletLogin onAuthenticated={(t) => setToken(t)} />;
+  }
 
   return (
     <div className="min-h-screen bg-bg text-text">
@@ -674,7 +678,7 @@ export default function CreateEscrowPage() {
             <div className="border-2 border-yellow-600 bg-yellow-600/5 p-4">
               <p className="text-sm text-yellow-700 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                Once created, the escrow will be deployed on {selectedChain.name}. The buyer will need to send {totalAmount} {selectedToken?.symbol} to the deposit address.
+                Once created, the escrow will be set up on {selectedChain.name}. The buyer will need to send {totalAmount} {selectedToken?.symbol} to the deposit address.
               </p>
             </div>
 

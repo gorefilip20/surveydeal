@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Plus, Wallet, ChevronLeft } from "lucide-react";
+import WalletLogin from "@/components/WalletLogin";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
@@ -156,17 +157,7 @@ export default function DashboardPage() {
   const completedCount = escrows.filter((e) => e.state === "COMPLETED").length;
 
   if (!token) {
-    return (
-      <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-neutral-600 text-lg mb-4">Please connect your wallet first</p>
-          <Link href="/" className="text-accent hover:underline inline-flex items-center gap-1">
-            <ChevronLeft size={16} />
-            Go to Homepage
-          </Link>
-        </div>
-      </div>
-    );
+    return <WalletLogin onAuthenticated={(t) => setToken(t)} />;
   }
 
   return (

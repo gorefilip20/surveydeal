@@ -27,8 +27,8 @@ const NETWORKS = [
 const FEATURES = [
   {
     icon: Lock,
-    title: "Smart Contract Escrow",
-    desc: "Funds locked in audited smart contracts. Neither party can cheat.",
+    title: "Secure Escrow",
+    desc: "Funds held safely until milestones are approved. Neither party can cheat.",
   },
   {
     icon: Globe,
@@ -52,8 +52,8 @@ const FEATURES = [
   },
   {
     icon: Zap,
-    title: "Instant Settlement",
-    desc: "On-chain settlement in seconds. No middlemen, no delays.",
+    title: "Fast Settlement",
+    desc: "Secure settlement across 8 EVM chains. Milestone-based releases.",
   },
 ];
 
@@ -62,7 +62,7 @@ const STEPS = [
   { num: "2", title: "Create Escrow", desc: "Set token, amount, milestones, and counterpart" },
   { num: "3", title: "Fund Escrow", desc: "Send tokens to the escrow deposit address" },
   { num: "4", title: "Deliver & Approve", desc: "Seller delivers, buyer approves milestones" },
-  { num: "5", title: "Funds Released", desc: "Smart contract auto-releases to seller" },
+  { num: "5", title: "Funds Released", desc: "Funds released to seller on approval" },
 ];
 
 function Logo() {
@@ -113,14 +113,14 @@ export default function LandingPage() {
             <div className="pt-4">
               <div className="flex items-center gap-2 mb-6">
                 <span className="w-2 h-2 bg-accent inline-block animate-pulse-dot" />
-                <span className="text-accent text-sm font-semibold">Live on 10+ Networks</span>
+                <span className="text-accent text-sm font-semibold">Live on 8 Networks</span>
               </div>
               <h1 className="text-[52px] leading-[1.05] font-heading font-extrabold text-text">
                 Trade crypto without trust issues.
               </h1>
               <p className="text-[17px] opacity-70 mt-6 max-w-[420px]">
-                The decentralized escrow platform for buying and selling any token — memecoins, ERC-20s, SPL tokens.
-                Smart contracts hold funds until both parties agree.
+                The secure escrow platform for buying and selling any EVM token — memecoins, ERC-20s, stablecoins.
+                Funds held safely until both parties agree.
               </p>
               <div className="flex items-center gap-3 mt-10">
                 <Link href="/escrow/create" className="btn btn-primary text-left">
@@ -256,7 +256,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="border-t-2 border-divider py-6">
         <div className="max-w-[1120px] mx-auto px-6 flex items-center justify-between text-xs opacity-50">
-          <p>&copy; 2025 SurveyDeal. Decentralized Escrow Protocol.</p>
+          <p>&copy; 2025 SurveyDeal. Secure Escrow Protocol.</p>
           <div className="flex gap-4">
             <a
               href="https://github.com/gorefilip20/surveydeal"

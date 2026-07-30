@@ -11,9 +11,9 @@ const archivo = Archivo({
 });
 
 export const metadata: Metadata = {
-  title: "SurveyDeal — Decentralized Crypto Escrow",
+  title: "SurveyDeal — Secure Crypto Escrow",
   description:
-    "Secure milestone-based crypto escrow protocol. Dual-mode: Locked (2-of-2) and Arbiter (2-of-3). Supporting all ERC-20 tokens across 10+ networks.",
+    "Secure milestone-based crypto escrow platform. Locked (2-of-2) and Arbiter (2-of-3) modes. Supporting all ERC-20 tokens across 8 EVM networks.",
   keywords: [
     "escrow",
     "crypto",
@@ -22,7 +22,6 @@ export const metadata: Metadata = {
     "Web3",
     "ERC-20",
     "blockchain",
-    "smart contract",
     "multi-chain",
   ],
 };
