@@ -13,3 +13,4 @@ coverage/
 contracts/artifacts/
 contracts/cache/
 *.tsbuildinfo
+.claude/
