@@ -2,8 +2,19 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Plus, X, Check, Search, AlertTriangle } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ArrowLeftRight,
+  Plus,
+  X,
+  Check,
+  Search,
+  AlertTriangle,
+  Shield,
+} from "lucide-react";
 import WalletLogin from "@/components/WalletLogin";
+import Nav from "@/components/Nav";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
@@ -18,7 +29,7 @@ const CHAINS = [
   { id: "FANTOM", name: "Fantom", abbr: "FTM", chainId: 250, nativeCurrency: "FTM" },
 ];
 
-interface Wallet {
+interface Wallet_ {
   id: string;
   address: string;
   network: string;
@@ -59,8 +70,8 @@ export default function CreateEscrowPage() {
   const [arbiterAddress, setArbiterAddress] = useState("");
   const [deadline, setDeadline] = useState("");
   const [milestones, setMilestones] = useState<Milestone[]>([{ description: "", amount: "" }]);
-  const [userWallets, setUserWallets] = useState<Wallet[]>([]);
-  const [preferredWallet, setPreferredWallet] = useState<Wallet | null>(null);
+  const [userWallets, setUserWallets] = useState<Wallet_[]>([]);
+  const [preferredWallet, setPreferredWallet] = useState<Wallet_ | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -75,7 +86,7 @@ export default function CreateEscrowPage() {
         .then((r) => r.json())
         .then((data) => {
           setUserWallets(Array.isArray(data) ? data : []);
-          const preferred = data.find((w: Wallet) => w.isPreferred && w.network === selectedChain.id);
+          const preferred = data.find((w: Wallet_) => w.isPreferred && w.network === selectedChain.id);
           if (preferred) setPreferredWallet(preferred);
         })
         .catch(() => {});
@@ -201,52 +212,54 @@ export default function CreateEscrowPage() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      {/* Header */}
-      <nav className="sticky top-0 z-50 bg-bg border-b-2 border-divider">
-        <div className="max-w-[800px] mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="font-heading font-extrabold text-lg">Create Escrow</span>
-            <span className="tag tag-accent">NEW</span>
+      <Nav />
+
+      <div className="max-w-[720px] mx-auto px-4 sm:px-6 py-8">
+        {/* Page Header */}
+        <div className="flex items-start justify-between mb-8">
+          <div>
+            <p className="text-xs uppercase tracking-wider font-semibold text-accent mb-1">New Escrow</p>
+            <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-text">Create Escrow</h1>
           </div>
-          <Link href="/dashboard" className="text-sm hover:text-accent transition-colors flex items-center gap-1">
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Dashboard
+          <Link href="/dashboard" className="btn btn-ghost text-left">
+            <ArrowLeft className="w-4 h-4" />
+            Back
           </Link>
         </div>
-      </nav>
 
-      <div className="max-w-[800px] mx-auto px-6 py-8">
         {/* Progress Steps */}
-        <div className="flex items-center justify-center gap-2 mb-10">
-          {steps.map((s, i) => (
-            <React.Fragment key={s.num}>
-              <div className="flex items-center gap-2">
+        <div className="grid grid-cols-4 border-2 border-divider mb-10">
+          {steps.map((s, i) => {
+            const isCurrent = step === s.num;
+            const isDone = step > s.num;
+            return (
+              <div
+                key={s.num}
+                className={`flex items-center gap-2 px-2 sm:px-3 py-3 ${
+                  i < steps.length - 1 ? "border-r-2 border-divider" : ""
+                } ${isCurrent ? "bg-accent text-white" : isDone ? "bg-accent-100" : "bg-bg"}`}
+              >
                 <div
-                  className={`w-8 h-8 flex items-center justify-center text-sm font-bold transition-colors ${
-                    step >= s.num
+                  className={`w-6 h-6 flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                    isCurrent
+                      ? "bg-white text-accent"
+                      : isDone
                       ? "bg-accent text-white"
-                      : "bg-divider text-text opacity-40"
+                      : "bg-divider text-text opacity-60"
                   }`}
                 >
-                  {step > s.num ? <Check className="w-4 h-4" /> : s.num}
+                  {isDone ? <Check className="w-3.5 h-3.5" /> : s.num}
                 </div>
                 <span
-                  className={`text-sm hidden sm:inline font-medium ${
-                    step >= s.num ? "text-text" : "text-text opacity-40"
+                  className={`text-xs font-semibold hidden sm:inline ${
+                    isCurrent ? "text-white" : isDone ? "text-accent-700" : "text-text opacity-50"
                   }`}
                 >
                   {s.label}
                 </span>
               </div>
-              {i < steps.length - 1 && (
-                <div
-                  className={`w-12 h-0.5 ${
-                    step > s.num ? "bg-accent" : "bg-divider"
-                  }`}
-                />
-              )}
-            </React.Fragment>
-          ))}
+            );
+          })}
         </div>
 
         {/* Error/Success */}
@@ -407,16 +420,28 @@ export default function CreateEscrowPage() {
               <p className="text-sm opacity-60">Set up the trade terms</p>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold mb-1">Title *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Buy 1M PEPE tokens"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="sd-input w-full"
-                />
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Title *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Buy 1M PEPE tokens"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="sd-input w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Seller Wallet Address *</label>
+                  <input
+                    type="text"
+                    placeholder={`Seller's ${selectedChain.nativeCurrency} wallet address (0x...)`}
+                    value={sellerAddress}
+                    onChange={(e) => setSellerAddress(e.target.value)}
+                    className="sd-input w-full font-mono text-sm"
+                  />
+                </div>
               </div>
 
               <div>
@@ -430,47 +455,24 @@ export default function CreateEscrowPage() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold mb-1">Seller Wallet Address *</label>
-                <input
-                  type="text"
-                  placeholder={`Seller's ${selectedChain.nativeCurrency} wallet address (0x...)`}
-                  value={sellerAddress}
-                  onChange={(e) => setSellerAddress(e.target.value)}
-                  className="sd-input w-full font-mono text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1">
-                  Total Amount ({selectedToken?.symbol}) *
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  placeholder="0.00"
-                  value={totalAmount}
-                  onChange={(e) => setTotalAmount(e.target.value)}
-                  className="sd-input w-full text-lg"
-                />
-                {selectedToken?.price && totalAmount && (
-                  <p className="text-xs opacity-50 mt-1">
-                    ≈ ${(parseFloat(totalAmount) * selectedToken.price).toFixed(2)} USD
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold mb-1">Escrow Mode</label>
-                  <select
-                    value={mode}
-                    onChange={(e) => setMode(Number(e.target.value))}
-                    className="sd-input w-full"
-                  >
-                    <option value={0}>Locked (2-of-2 agreement)</option>
-                    <option value={1}>Arbiter (2-of-3 with dispute resolution)</option>
-                  </select>
+                  <label className="block text-sm font-semibold mb-1">
+                    Total Amount ({selectedToken?.symbol}) *
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="0.00"
+                    value={totalAmount}
+                    onChange={(e) => setTotalAmount(e.target.value)}
+                    className="sd-input w-full font-heading font-extrabold text-lg"
+                  />
+                  {selectedToken?.price && totalAmount && (
+                    <p className="text-xs opacity-50 mt-1">
+                      ≈ ${(parseFloat(totalAmount) * selectedToken.price).toFixed(2)} USD
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-semibold mb-1">Deadline (optional)</label>
@@ -480,6 +482,61 @@ export default function CreateEscrowPage() {
                     onChange={(e) => setDeadline(e.target.value)}
                     className="sd-input w-full"
                   />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-2">Escrow Mode</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setMode(0)}
+                    className={`text-left p-4 border-2 transition-colors ${
+                      mode === 0
+                        ? "bg-accent text-white border-accent"
+                        : "bg-bg border-divider hover:border-accent"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <Shield className="w-5 h-5" />
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase border-2 ${
+                          mode === 0 ? "border-white text-white" : "border-divider text-text"
+                        }`}
+                      >
+                        2-OF-2
+                      </span>
+                    </div>
+                    <p className="font-heading font-extrabold mb-1">Locked Mode</p>
+                    <p className={`text-xs ${mode === 0 ? "text-white/80" : "opacity-60"}`}>
+                      Both parties must cooperate. No third-party intervention.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMode(1)}
+                    className={`text-left p-4 border-2 transition-colors ${
+                      mode === 1
+                        ? "bg-accent text-white border-accent"
+                        : "bg-bg border-divider hover:border-accent"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <ArrowLeftRight className="w-5 h-5" />
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase border-2 ${
+                          mode === 1 ? "border-white text-white" : "border-divider text-text"
+                        }`}
+                      >
+                        2-OF-3
+                      </span>
+                    </div>
+                    <p className="font-heading font-extrabold mb-1">Arbiter Mode</p>
+                    <p className={`text-xs ${mode === 1 ? "text-white/80" : "opacity-60"}`}>
+                      Trusted arbiter resolves disputes.
+                    </p>
+                  </button>
                 </div>
               </div>
 
@@ -568,30 +625,29 @@ export default function CreateEscrowPage() {
             </button>
 
             {/* Total Check */}
-            <div className={`p-4 border-2 ${
-              amountsMatch
-                ? "border-green-600 bg-green-600/5"
-                : "border-yellow-600 bg-yellow-600/5"
-            }`}>
+            <div className="p-4 bg-accent-100 border-2 border-accent">
               <div className="flex items-center justify-between">
-                <span className="text-sm">Milestone Total</span>
-                <span className="font-semibold">
+                <span className="text-sm font-semibold text-accent-700">Milestone Total</span>
+                <span className="font-heading font-extrabold text-accent-700">
                   {milestoneTotal.toFixed(6)} {selectedToken?.symbol}
                 </span>
               </div>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-sm">Escrow Total</span>
-                <span className="font-semibold">
+              <div className="flex items-center justify-between mt-2 pt-2 border-t-2 border-accent/20">
+                <span className="text-sm font-semibold text-accent-700">Escrow Total</span>
+                <span className="font-heading font-extrabold text-accent-700">
                   {parseFloat(totalAmount || "0").toFixed(6)} {selectedToken?.symbol}
                 </span>
               </div>
-              {!amountsMatch && (
-                <p className="text-xs text-yellow-700 mt-2 flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" />
+            </div>
+
+            {!amountsMatch && (
+              <div className="flex items-center gap-2 border-2 border-yellow-600 bg-yellow-600/5 px-4 py-3">
+                <AlertTriangle className="w-4 h-4 text-yellow-700 flex-shrink-0" />
+                <p className="text-xs text-yellow-700">
                   Milestone amounts must equal the total. Difference: {Math.abs(milestoneTotal - parseFloat(totalAmount || "0")).toFixed(6)}
                 </p>
-              )}
-            </div>
+              </div>
+            )}
 
             <div className="flex gap-3">
               <button onClick={() => setStep(2)} className="btn btn-secondary">

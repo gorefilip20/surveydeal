@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import dynamic from "next/dynamic";
-import { ChevronLeft, Shield, Copy, Check, Wallet } from "lucide-react";
+import { ChevronLeft, Shield, Copy, Check, House, RefreshCw, Wallet, QrCode } from "lucide-react";
+import Nav from "@/components/Nav";
 
 const QRCodeSVG = dynamic(() => import("qrcode.react").then((mod) => mod.QRCodeSVG), { ssr: false });
 
@@ -89,6 +91,55 @@ export default function EscrowDetailPage() {
     setActionLoading(false);
   };
 
+  const generateDepositWallet = async () => {
+    setActionLoading(true);
+    setMessage("");
+    try {
+      const res = await fetch(`${API}/escrows/${escrowId}/deposit-wallet`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage(
+          data.depositWallet?.alreadyGenerated
+            ? "Deposit wallet already generated."
+            : "Deposit wallet generated."
+        );
+        loadEscrow();
+      } else {
+        setMessage(`Error: ${data.error || "Failed to generate deposit wallet"}`);
+      }
+    } catch {
+      setMessage("Error: Network error");
+    }
+    setActionLoading(false);
+  };
+
+  const verifyDeposit = async () => {
+    const txHash = window.prompt("Enter the deposit transaction hash to verify:");
+    if (!txHash) return;
+    setActionLoading(true);
+    setMessage("");
+    try {
+      const res = await fetch(`${API}/escrows/${escrowId}/verify-deposit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ txHash }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage(data.message || "Deposit verified and confirmed.");
+        loadEscrow();
+      } else {
+        setMessage(`Error: ${data.error || data.message || "Deposit not found or not confirmed yet"}`);
+      }
+    } catch {
+      setMessage("Error: Network error");
+    }
+    setActionLoading(false);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
@@ -102,10 +153,10 @@ export default function EscrowDetailPage() {
       <div className="min-h-screen bg-bg flex items-center justify-center">
         <div className="text-center">
           <p className="text-text text-lg font-heading font-extrabold">Escrow not found</p>
-          <a href="/dashboard" className="btn btn-ghost mt-4 inline-flex">
+          <Link href="/dashboard" className="btn btn-ghost mt-4 inline-flex">
             <ChevronLeft size={16} />
             Back to Dashboard
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -119,24 +170,7 @@ export default function EscrowDetailPage() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      <nav className="border-b-2 border-divider bg-bg sticky top-0 z-50">
-        <div className="max-w-[1120px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-          <a href="/dashboard" className="flex items-center gap-3">
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <rect width="32" height="32" fill="#ec3013" />
-              <path d="M8 10H12V20H8V10Z" fill="#f3f2f2" />
-              <path d="M14 13H18V20H14V13Z" fill="#f3f2f2" opacity="0.8" />
-              <path d="M20 8H24V20H20V8Z" fill="#f3f2f2" />
-              <rect x="6" y="21" width="20" height="2" fill="#f3f2f2" />
-            </svg>
-            <span className="font-heading font-extrabold text-sm tracking-wide">SURVEYDEAL</span>
-          </a>
-          <a href="/dashboard" className="btn btn-ghost text-sm">
-            <ChevronLeft size={16} />
-            Dashboard
-          </a>
-        </div>
-      </nav>
+      <Nav />
 
       <div className="max-w-[1120px] mx-auto px-4 sm:px-6 py-8">
         {message && (
@@ -261,7 +295,7 @@ export default function EscrowDetailPage() {
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <div className="flex gap-1.5 flex-wrap justify-end">
-                        {m.released && <span className="tag tag-accent">RELEASED</span>}
+                        {m.released && <span className="tag bg-accent text-white">RELEASED</span>}
                         {m.sellerDelivered && !m.released && <span className="tag tag-neutral">DELIVERED</span>}
                         {m.buyerApproved && !m.released && <span className="tag tag-neutral">APPROVED</span>}
                         {m.disputed && <span className="tag tag-accent">DISPUTED</span>}
@@ -293,6 +327,9 @@ export default function EscrowDetailPage() {
                 {isActiveOrDisputed && (
                   <button className="btn btn-secondary w-full"><Shield size={16} />Initiate Dispute</button>
                 )}
+                {isActiveOrDisputed && (
+                  <button className="btn btn-secondary w-full"><House size={16} />Request Refund</button>
+                )}
                 {isAdmin && (
                   <div className="pt-3 border-t-2 border-divider">
                     <p className="text-[11px] uppercase tracking-wider opacity-50 mb-2">Admin Actions</p>
@@ -305,32 +342,53 @@ export default function EscrowDetailPage() {
             </div>
 
             {/* Deposit Info */}
-            {(escrow.state === "CREATED" || escrow.state === "FUNDED") && escrow.depositWalletAddr && (
+            {(escrow.state === "CREATED" || escrow.state === "FUNDED") && (
               <div className="border-2 border-divider">
                 <div className="px-5 py-3 border-b-2 border-divider">
                   <h3 className="font-heading font-extrabold text-sm uppercase tracking-wider">Deposit Info</h3>
                 </div>
                 <div className="p-5 space-y-4">
-                  <div className="flex justify-center">
-                    <div className="bg-white p-3 border-2 border-divider">
-                      <QRCodeSVG value={escrow.depositWalletAddr} size={160} level="H" includeMargin={false} />
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider opacity-50 mb-1">Deposit Address</p>
-                    <p className="text-sm font-mono break-all text-text">{escrow.depositWalletAddr}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider opacity-50 mb-1">Expected Amount</p>
-                    <p className="text-sm font-heading font-extrabold text-text">{escrow.totalAmount} {escrow.token?.symbol}</p>
-                  </div>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(escrow.depositWalletAddr)}
-                    className="btn btn-secondary w-full"
-                  >
-                    <Copy size={16} />
-                    Copy Address
-                  </button>
+                  {escrow.depositWalletAddr ? (
+                    <>
+                      <div className="flex justify-center">
+                        <div className="bg-white p-3 border-2 border-divider">
+                          <QRCodeSVG value={escrow.depositWalletAddr} size={160} level="H" includeMargin={false} />
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider opacity-50 mb-1">Deposit Address</p>
+                        <p className="text-sm font-mono break-all text-text">{escrow.depositWalletAddr}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider opacity-50 mb-1">Expected Amount</p>
+                        <p className="text-sm font-heading font-extrabold text-text">{escrow.totalAmount} {escrow.token?.symbol}</p>
+                      </div>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(escrow.depositWalletAddr)}
+                        className="btn btn-secondary w-full"
+                      >
+                        <Copy size={16} />
+                        Copy Address
+                      </button>
+                      <button
+                        onClick={verifyDeposit}
+                        disabled={actionLoading}
+                        className="btn btn-secondary w-full disabled:opacity-40"
+                      >
+                        <RefreshCw size={16} />
+                        {actionLoading ? "Checking..." : "Verify Deposit"}
+                      </button>
+                    </>
+                  ) : escrow.state === "CREATED" ? (
+                    <button
+                      onClick={generateDepositWallet}
+                      disabled={actionLoading}
+                      className="btn btn-primary w-full disabled:opacity-40"
+                    >
+                      <QrCode size={16} />
+                      {actionLoading ? "Generating..." : "Generate Deposit Wallet"}
+                    </button>
+                  ) : null}
                 </div>
               </div>
             )}

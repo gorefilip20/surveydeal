@@ -267,10 +267,17 @@ export default function AdminDashboard() {
       {/* Header */}
       <nav className="sticky top-0 z-50 bg-bg border-b-2 border-divider">
         <div className="max-w-[1120px] mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="font-heading font-extrabold text-lg">SurveyDeal Admin</span>
-            <span className="tag tag-accent">ADMIN</span>
-          </div>
+          <Link href="/" className="flex items-center gap-2">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+              <rect width="32" height="32" fill="#ec3013" />
+              <path d="M8 10H12V20H8V10Z" fill="#f3f2f2" />
+              <path d="M14 13H18V20H14V13Z" fill="#f3f2f2" opacity="0.8" />
+              <path d="M20 8H24V20H20V8Z" fill="#f3f2f2" />
+              <rect x="6" y="21" width="20" height="2" fill="#f3f2f2" />
+            </svg>
+            <span className="font-heading font-extrabold text-lg">SurveyDeal</span>
+            <span className="tag tag-accent ml-1">ADMIN</span>
+          </Link>
           <div className="flex items-center gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 opacity-40" />
@@ -303,6 +310,12 @@ export default function AdminDashboard() {
       </nav>
 
       <div className="max-w-[1120px] mx-auto px-6 py-6">
+        {/* Page Header */}
+        <div className="mb-6">
+          <p className="text-xs uppercase tracking-wider font-semibold text-accent mb-1">Admin</p>
+          <h2 className="text-3xl font-heading font-extrabold text-text">Protocol Management</h2>
+        </div>
+
         {/* Tab Navigation */}
         <div className="flex gap-0 mb-6 border-b-2 border-divider">
           {tabs.map((t) => (

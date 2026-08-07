@@ -3,7 +3,6 @@
 import React from "react";
 import Link from "next/link";
 import {
-  Wallet,
   Lock,
   Globe,
   Coins,
@@ -12,6 +11,7 @@ import {
   Zap,
   ArrowRight,
 } from "lucide-react";
+import Nav from "@/components/Nav";
 
 const NETWORKS = [
   { abbr: "ETH", name: "Ethereum", currency: "ETH" },
@@ -65,64 +65,28 @@ const STEPS = [
   { num: "5", title: "Funds Released", desc: "Funds released to seller on approval" },
 ];
 
-function Logo() {
-  return (
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-      <rect width="32" height="32" fill="#ec3013" />
-      <path d="M8 10H12V20H8V10Z" fill="#f3f2f2" />
-      <path d="M14 13H18V20H14V13Z" fill="#f3f2f2" opacity="0.8" />
-      <path d="M20 8H24V20H20V8Z" fill="#f3f2f2" />
-      <rect x="6" y="21" width="20" height="2" fill="#f3f2f2" />
-    </svg>
-  );
-}
-
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-bg text-text">
-      {/* Navigation */}
-      <nav className="sticky top-0 z-50 bg-bg border-b-2 border-divider">
-        <div className="max-w-[1120px] mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <Logo />
-            <span className="font-heading font-extrabold text-lg">SurveyDeal</span>
-            <span className="tag tag-accent ml-1">ESCROW</span>
-          </div>
-          <div className="flex items-center gap-6">
-            <Link href="/dashboard" className="text-sm hover:text-accent transition-colors">
-              Dashboard
-            </Link>
-            <Link href="/escrow/create" className="text-sm hover:text-accent transition-colors">
-              Create
-            </Link>
-            <Link href="/admin" className="text-sm hover:text-accent transition-colors">
-              Admin
-            </Link>
-          </div>
-          <Link href="/escrow/create" className="btn btn-primary">
-            <Wallet className="w-4 h-4" />
-            Connect Wallet
-          </Link>
-        </div>
-      </nav>
+      <Nav />
 
       {/* Hero */}
       <section className="pt-20 pb-16">
         <div className="max-w-[1120px] mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-            <div className="pt-4">
-              <div className="flex items-center gap-2 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <div>
+              <div className="flex items-center gap-2 mb-4">
                 <span className="w-2 h-2 bg-accent inline-block animate-pulse-dot" />
                 <span className="text-accent text-sm font-semibold">Live on 8 Networks</span>
               </div>
-              <h1 className="text-[52px] leading-[1.05] font-heading font-extrabold text-text">
-                Trade crypto without trust issues.
+              <h1 className="text-[52px] leading-[1.05] font-heading font-extrabold text-text mb-4">
+                Trade crypto<br />without trust<br />issues.
               </h1>
-              <p className="text-[17px] opacity-70 mt-6 max-w-[420px]">
+              <p className="text-[17px] opacity-70 max-w-[420px] mb-6">
                 The secure escrow platform for buying and selling any EVM token — memecoins, ERC-20s, stablecoins.
                 Funds held safely until both parties agree.
               </p>
-              <div className="flex items-center gap-3 mt-10">
+              <div className="flex items-center gap-3">
                 <Link href="/escrow/create" className="btn btn-primary text-left">
                   Start Trading
                   <ArrowRight className="w-4 h-4" />
@@ -133,29 +97,28 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <div className="relative">
-              <div className="sd-card p-0">
-                <div className="flex items-center justify-between px-5 py-3 border-b-2 border-divider">
-                  <span className="text-xs font-semibold tracking-wider uppercase opacity-50">Active Escrow</span>
+            <div className="bg-surface p-6 relative">
+              <div className="border-2 border-divider p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-semibold tracking-wider uppercase text-accent">Active Escrow</span>
                   <span className="tag tag-accent">FUNDED</span>
                 </div>
-                <div className="px-5 py-6">
-                  <p className="text-[32px] font-heading font-extrabold leading-none">10,000 USDT</p>
-                  <div className="mt-5">
-                    <div className="w-full h-2 bg-divider">
-                      <div className="h-full bg-accent" style={{ width: "66%" }} />
-                    </div>
-                    <p className="text-xs opacity-50 mt-2">2 of 3 milestones released</p>
-                  </div>
+                <h3 className="text-[28px] font-heading font-extrabold leading-none mb-2">10,000 USDT</h3>
+                <p className="text-[13px] opacity-60 mb-4">Web Development Milestone Payment</p>
+                <div className="h-[6px] bg-neutral-200 mb-3">
+                  <div className="h-full bg-accent" style={{ width: "66%" }} />
                 </div>
+                <p className="text-xs opacity-50">2 of 3 milestones released</p>
               </div>
-              <div className="absolute bottom-[-16px] right-[-16px] w-20 h-20 bg-accent flex items-center justify-center">
-                <Lock className="w-8 h-8 text-white" />
+              <div className="absolute bottom-[-12px] right-[-12px] w-20 h-20 bg-accent flex items-center justify-center">
+                <Lock className="w-8 h-8 text-bg" />
               </div>
             </div>
           </div>
         </div>
       </section>
+
+      <div className="max-w-[1120px] mx-auto px-6"><hr className="border-0 h-[2px] bg-divider" /></div>
 
       {/* Supported Networks */}
       <section className="py-16">
@@ -163,21 +126,26 @@ export default function LandingPage() {
           <p className="text-xs font-semibold tracking-wider uppercase opacity-50 mb-6">
             Supported Networks
           </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3">
             {NETWORKS.map((net) => (
-              <div key={net.abbr} className="flex items-center gap-3 py-2">
-                <div className="w-7 h-7 border-2 border-divider flex items-center justify-center text-[10px] font-bold shrink-0">
+              <div
+                key={net.abbr}
+                className="flex items-center gap-3 p-3 bg-surface border border-divider hover:border-accent transition-colors"
+              >
+                <div className="w-7 h-7 border-2 border-divider flex items-center justify-center text-[11px] font-heading font-extrabold shrink-0">
                   {net.abbr}
                 </div>
                 <div>
-                  <p className="text-sm font-semibold leading-tight">{net.name}</p>
-                  <p className="text-xs opacity-50">{net.currency}</p>
+                  <p className="text-[13px] font-semibold leading-tight">{net.name}</p>
+                  <p className="text-[11px] opacity-50">{net.currency}</p>
                 </div>
               </div>
             ))}
           </div>
         </div>
       </section>
+
+      <div className="max-w-[1120px] mx-auto px-6"><hr className="border-0 h-[2px] bg-divider" /></div>
 
       {/* Features Grid */}
       <section className="py-16">
@@ -201,6 +169,8 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <div className="max-w-[1120px] mx-auto px-6"><hr className="border-0 h-[2px] bg-divider" /></div>
+
       {/* How It Works */}
       <section className="py-16">
         <div className="max-w-[1120px] mx-auto px-6">
@@ -223,16 +193,18 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <div className="max-w-[1120px] mx-auto px-6"><hr className="border-0 h-[2px] bg-divider" /></div>
+
       {/* CTA */}
-      <section className="py-16">
+      <section className="py-20">
         <div className="max-w-[1120px] mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-2">
             <div className="bg-accent p-10 flex flex-col justify-center">
-              <h2 className="text-3xl font-heading font-extrabold text-white leading-tight">
+              <h2 className="text-[38px] font-heading font-extrabold text-white leading-tight mb-3">
                 Ready to trade safely?
               </h2>
-              <p className="text-white opacity-80 mt-3 text-sm max-w-[360px]">
-                Create your first escrow in under 2 minutes. No sign-up required — just connect your wallet.
+              <p className="text-white opacity-80 text-[15px]">
+                Create your first escrow in under 2 minutes. No sign-up — just connect your wallet.
               </p>
             </div>
             <div className="bg-surface p-10 flex flex-col justify-center gap-3">
