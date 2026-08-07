@@ -2,7 +2,8 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "./lib/prisma";
+import { SUPPORTED_CHAINS } from "./lib/chains";
 import adminRouter from "./controllers/adminController";
 import escrowRouter from "./controllers/escrowController";
 import dexscreenerRouter from "./controllers/dexscreenerController";
@@ -10,8 +11,6 @@ import chatRouter from "./controllers/chatController";
 import transferRouter from "./controllers/transferController";
 import { startBlockchainListener, stopBlockchainListener } from "./services/blockchainListener";
 import { apiLimiter } from "./middleware/rateLimiter";
-
-const prisma = new PrismaClient();
 const app = express();
 
 const PORT = parseInt(process.env.BACKEND_PORT || "5000", 10);
@@ -77,18 +76,7 @@ app.get("/api/health", async (_req, res) => {
 
 // ── Supported Chains (public) ────────────────────────
 app.get("/api/chains", (_req, res) => {
-  res.json({
-    chains: [
-      { id: "ETHEREUM", name: "Ethereum", chainId: 1, type: "evm", nativeCurrency: "ETH", blockExplorer: "https://etherscan.io" },
-      { id: "BNB_CHAIN", name: "BNB Chain", chainId: 56, type: "evm", nativeCurrency: "BNB", blockExplorer: "https://bscscan.com" },
-      { id: "POLYGON", name: "Polygon", chainId: 137, type: "evm", nativeCurrency: "MATIC", blockExplorer: "https://polygonscan.com" },
-      { id: "ARBITRUM", name: "Arbitrum One", chainId: 42161, type: "evm", nativeCurrency: "ETH", blockExplorer: "https://arbiscan.io" },
-      { id: "BASE", name: "Base", chainId: 8453, type: "evm", nativeCurrency: "ETH", blockExplorer: "https://basescan.org" },
-      { id: "AVALANCHE", name: "Avalanche C-Chain", chainId: 43114, type: "evm", nativeCurrency: "AVAX", blockExplorer: "https://snowtrace.io" },
-      { id: "OPTIMISM", name: "Optimism", chainId: 10, type: "evm", nativeCurrency: "ETH", blockExplorer: "https://optimistic.etherscan.io" },
-      { id: "FANTOM", name: "Fantom", chainId: 250, type: "evm", nativeCurrency: "FTM", blockExplorer: "https://ftmscan.com" },
-    ],
-  });
+  res.json({ chains: SUPPORTED_CHAINS });
 });
 
 // ── API Routes ───────────────────────────────────────

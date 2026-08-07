@@ -1,8 +1,9 @@
 import { Router, Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
+import { prisma } from "../lib/prisma";
+import { validate } from "../middleware/validate";
+import { chatRoomCreateSchema, chatMessageSchema } from "../middleware/schemas";
 
-const prisma = new PrismaClient();
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET!;
 
@@ -48,7 +49,7 @@ function adminMiddleware(req: AuthRequest, res: Response, next: Function) {
 //  USER: Create or get support chat room
 // ══════════════════════════════════════════════════════
 
-router.post("/rooms", authMiddleware, async (req: AuthRequest, res: Response) => {
+router.post("/rooms", authMiddleware, validate(chatRoomCreateSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { escrowId, subject, initialMessage } = req.body;
 
@@ -182,7 +183,7 @@ router.get("/rooms/:roomId/messages", authMiddleware, async (req: AuthRequest, r
 //  USER/ADMIN: Send a message
 // ══════════════════════════════════════════════════════
 
-router.post("/rooms/:roomId/messages", authMiddleware, async (req: AuthRequest, res: Response) => {
+router.post("/rooms/:roomId/messages", authMiddleware, validate(chatMessageSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { content } = req.body;
     if (!content || !content.trim()) {

@@ -36,6 +36,14 @@ export default function DashboardPage() {
   const [newWalletAddress, setNewWalletAddress] = useState("");
   const [newWalletNetwork, setNewWalletNetwork] = useState("BNB_CHAIN");
   const [newWalletLabel, setNewWalletLabel] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [feedbackType, setFeedbackType] = useState<"error" | "success">("error");
+  const [confirmAction, setConfirmAction] = useState<{ msg: string; fn: () => void } | null>(null);
+
+  const showFeedback = (msg: string, type: "error" | "success" = "error") => {
+    setFeedback(msg);
+    setFeedbackType(type);
+  };
 
   useEffect(() => {
     const stored = localStorage.getItem("user_token");
@@ -90,22 +98,29 @@ export default function DashboardPage() {
         setNewWalletAddress("");
         setNewWalletLabel("");
         setShowAddWallet(false);
+        showFeedback("Wallet added successfully", "success");
       } else {
-        alert(data.error || "Failed to add wallet");
+        showFeedback(data.error || "Failed to add wallet");
       }
     } catch {
-      alert("Network error");
+      showFeedback("Network error");
     }
   };
 
   const deleteWallet = async (walletId: string) => {
-    if (!confirm("Remove this wallet?")) return;
-    try {
-      await fetch(`${API}/wallets/${walletId}`, { method: "DELETE", headers });
-      setWallets(wallets.filter((w) => w.id !== walletId));
-    } catch {
-      alert("Failed to delete wallet");
-    }
+    setConfirmAction({
+      msg: "Remove this wallet?",
+      fn: async () => {
+        try {
+          await fetch(`${API}/wallets/${walletId}`, { method: "DELETE", headers });
+          setWallets(wallets.filter((w) => w.id !== walletId));
+          showFeedback("Wallet removed", "success");
+        } catch {
+          showFeedback("Failed to delete wallet");
+        }
+        setConfirmAction(null);
+      },
+    });
   };
 
   const setPreferred = async (walletId: string) => {
@@ -117,7 +132,7 @@ export default function DashboardPage() {
       });
       loadData();
     } catch {
-      alert("Failed to update wallet");
+      showFeedback("Failed to update wallet");
     }
   };
 
@@ -166,6 +181,25 @@ export default function DashboardPage() {
       <Nav />
 
       <main className="max-w-[1120px] mx-auto px-4 sm:px-6 py-8">
+        {feedback && (
+          <div className={`px-4 py-3 mb-6 text-sm border-2 ${
+            feedbackType === "error"
+              ? "border-accent bg-accent-100 text-accent-700"
+              : "border-green-600 bg-green-600/5 text-green-700"
+          }`}>
+            {feedback}
+            <button onClick={() => setFeedback("")} className="float-right opacity-50 hover:opacity-100">&times;</button>
+          </div>
+        )}
+        {confirmAction && (
+          <div className="px-4 py-3 mb-6 text-sm border-2 border-yellow-600 bg-yellow-600/5 flex items-center justify-between">
+            <span className="text-yellow-700">{confirmAction.msg}</span>
+            <div className="flex gap-2">
+              <button onClick={confirmAction.fn} className="btn btn-primary text-xs px-3 py-1.5">Confirm</button>
+              <button onClick={() => setConfirmAction(null)} className="btn btn-secondary text-xs px-3 py-1.5">Cancel</button>
+            </div>
+          </div>
+        )}
         <div className="flex items-start justify-between mb-8">
           <div>
             <p className="text-xs uppercase tracking-wider font-semibold text-accent mb-1">Dashboard</p>

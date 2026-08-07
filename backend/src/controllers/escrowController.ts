@@ -1,24 +1,29 @@
 import { Router, Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { ethers } from "ethers";
 import * as crypto from "crypto";
+import { prisma } from "../lib/prisma";
+import { EVM_CHAIN_IDS, SUPPORTED_CHAINS } from "../lib/chains";
 import {
   verifyDepositTransaction,
   confirmDeposit,
 } from "../services/blockchainListener";
 import { generateDepositWallet } from "../services/walletGenerator";
+import { processRefund } from "../services/refundService";
 import { authLimiter, depositLimiter } from "../middleware/rateLimiter";
+import { validate } from "../middleware/validate";
+import {
+  loginSchema, profileUpdateSchema, createEscrowSchema,
+  escrowStateSchema, depositWalletSchema, verifyDepositSchema,
+  disputeSchema, walletAddSchema, chatRoomCreateSchema, chatMessageSchema,
+} from "../middleware/schemas";
 
-const prisma = new PrismaClient();
 const router = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error("JWT_SECRET environment variable must be set");
 }
-
-const EVM_CHAIN_IDS = [1, 56, 137, 42161, 8453, 43114, 10, 250];
 
 const nonceStore = new Map<string, { nonce: string; expires: number }>();
 
@@ -75,7 +80,7 @@ router.get("/auth/nonce/:walletAddress", (req: Request, res: Response) => {
   res.json({ message, nonce });
 });
 
-router.post("/auth/login", authLimiter, async (req: Request, res: Response) => {
+router.post("/auth/login", authLimiter, validate(loginSchema), async (req: Request, res: Response) => {
   try {
     const { walletAddress, signature, message } = req.body;
     if (!walletAddress || !signature || !message) {
@@ -162,6 +167,24 @@ router.get("/auth/me", userAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
+router.post("/auth/refresh", userAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user || user.isFrozen) {
+      res.status(403).json({ error: "Account unavailable" });
+      return;
+    }
+    const token = jwt.sign(
+      { sub: user.id, wallet: user.walletAddress, isAdmin: user.isAdmin },
+      JWT_SECRET!,
+      { expiresIn: "24h" }
+    );
+    res.json({ token });
+  } catch {
+    res.status(500).json({ error: "Token refresh failed" });
+  }
+});
+
 router.patch("/auth/profile", userAuth, async (req: AuthRequest, res: Response) => {
   try {
     const { displayName, email } = req.body;
@@ -199,7 +222,7 @@ router.get("/wallets", userAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post("/wallets", userAuth, async (req: AuthRequest, res: Response) => {
+router.post("/wallets", userAuth, validate(walletAddSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { address, network, label, isPreferred } = req.body;
 
@@ -287,7 +310,7 @@ router.delete("/wallets/:walletId", userAuth, async (req: AuthRequest, res: Resp
 //  ESCROW CRUD
 // ══════════════════════════════════════════════════════════════
 
-router.post("/escrows", userAuth, async (req: AuthRequest, res: Response) => {
+router.post("/escrows", userAuth, validate(createEscrowSchema), async (req: AuthRequest, res: Response) => {
   try {
     const {
       chainId,
@@ -476,7 +499,7 @@ router.get("/escrows/:id", userAuth, async (req: AuthRequest, res: Response) => 
   }
 });
 
-router.patch("/escrows/:id/state", userAuth, async (req: AuthRequest, res: Response) => {
+router.patch("/escrows/:id/state", userAuth, validate(escrowStateSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { state } = req.body;
 
@@ -508,6 +531,17 @@ router.patch("/escrows/:id/state", userAuth, async (req: AuthRequest, res: Respo
 
     if (state === "REFUNDED" && escrow.buyerId !== req.userId) {
       res.status(403).json({ error: "Only the buyer can request a refund" });
+      return;
+    }
+
+    if (state === "REFUNDED") {
+      const refundResult = await processRefund(req.params.id as string);
+      if (!refundResult.success) {
+        res.status(500).json({ error: `Refund failed: ${refundResult.error}` });
+        return;
+      }
+      const updated = await prisma.escrow.findUnique({ where: { id: req.params.id as string } });
+      res.json({ ...updated, refundTxHash: refundResult.txHash });
       return;
     }
 
@@ -591,7 +625,7 @@ router.post("/escrows/:id/milestones/:milestoneIndex/approve", userAuth, async (
 //  DISPUTE MANAGEMENT
 // ══════════════════════════════════════════════════════════════
 
-router.post("/escrows/:id/disputes", userAuth, async (req: AuthRequest, res: Response) => {
+router.post("/escrows/:id/disputes", userAuth, validate(disputeSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { reason, evidence, milestoneIndex } = req.body;
     if (!reason) { res.status(400).json({ error: "Reason is required" }); return; }
@@ -746,7 +780,7 @@ router.get("/escrows/:id/deposit", userAuth, async (req: AuthRequest, res: Respo
   }
 });
 
-router.post("/escrows/:id/deposit-wallet", userAuth, depositLimiter, async (req: AuthRequest, res: Response) => {
+router.post("/escrows/:id/deposit-wallet", userAuth, depositLimiter, validate(depositWalletSchema), async (req: AuthRequest, res: Response) => {
   try {
     const escrow = await prisma.escrow.findUnique({ where: { id: req.params.id as string } });
     if (!escrow) {
@@ -810,7 +844,7 @@ router.post("/escrows/:id/deposit-wallet", userAuth, depositLimiter, async (req:
   }
 });
 
-router.post("/escrows/:id/verify-deposit", userAuth, async (req: AuthRequest, res: Response) => {
+router.post("/escrows/:id/verify-deposit", userAuth, validate(verifyDepositSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { txHash } = req.body;
     if (!txHash) {

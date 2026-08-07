@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Wallet } from "lucide-react";
+import { Wallet, LogOut, Menu, X } from "lucide-react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount } from "wagmi";
+import { useAuth } from "@/components/AuthProvider";
 
 function Logo() {
   return (
@@ -20,7 +22,9 @@ function Logo() {
 
 export default function Nav() {
   const pathname = usePathname();
-  const { isConnected, address } = useAccount();
+  const { isConnected } = useAccount();
+  const { isAuthenticated, logout } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const links = [
     { href: "/dashboard", label: "Dashboard" },
@@ -37,6 +41,8 @@ export default function Nav() {
           <span className="font-heading font-extrabold text-lg">SurveyDeal</span>
           <span className="tag tag-accent ml-1">ESCROW</span>
         </Link>
+
+        {/* Desktop links */}
         <div className="hidden sm:flex items-center gap-6">
           {links.map((link) => (
             <Link
@@ -52,19 +58,86 @@ export default function Nav() {
             </Link>
           ))}
         </div>
-        {isConnected ? (
-          <ConnectButton showBalance={false} chainStatus="icon" accountStatus="address" />
-        ) : (
-          <ConnectButton.Custom>
-            {({ openConnectModal }) => (
-              <button onClick={openConnectModal} className="btn btn-primary">
-                <Wallet className="w-4 h-4" />
-                Connect Wallet
-              </button>
-            )}
-          </ConnectButton.Custom>
-        )}
+
+        {/* Desktop right side */}
+        <div className="hidden sm:flex items-center gap-3">
+          {isConnected ? (
+            <>
+              <ConnectButton showBalance={false} chainStatus="icon" accountStatus="address" />
+              {isAuthenticated && (
+                <button
+                  onClick={logout}
+                  className="text-sm opacity-60 hover:opacity-100 transition-opacity flex items-center gap-1"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </>
+          ) : (
+            <ConnectButton.Custom>
+              {({ openConnectModal }) => (
+                <button onClick={openConnectModal} className="btn btn-primary">
+                  <Wallet className="w-4 h-4" />
+                  Connect Wallet
+                </button>
+              )}
+            </ConnectButton.Custom>
+          )}
+        </div>
+
+        {/* Mobile hamburger */}
+        <button
+          onClick={() => setMobileOpen(!mobileOpen)}
+          className="sm:hidden p-2 text-text"
+        >
+          {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
       </div>
+
+      {/* Mobile menu */}
+      {mobileOpen && (
+        <div className="sm:hidden border-t-2 border-divider bg-bg px-6 py-4 space-y-3">
+          {links.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              onClick={() => setMobileOpen(false)}
+              className={`block text-sm py-2 transition-colors ${
+                pathname === link.href
+                  ? "text-accent font-semibold"
+                  : "text-text hover:text-accent"
+              }`}
+            >
+              {link.label}
+            </Link>
+          ))}
+          <div className="pt-3 border-t border-divider">
+            {isConnected ? (
+              <div className="flex items-center justify-between">
+                <ConnectButton showBalance={false} chainStatus="icon" accountStatus="address" />
+                {isAuthenticated && (
+                  <button
+                    onClick={() => { logout(); setMobileOpen(false); }}
+                    className="btn btn-secondary text-sm"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    Logout
+                  </button>
+                )}
+              </div>
+            ) : (
+              <ConnectButton.Custom>
+                {({ openConnectModal }) => (
+                  <button onClick={openConnectModal} className="btn btn-primary w-full">
+                    <Wallet className="w-4 h-4" />
+                    Connect Wallet
+                  </button>
+                )}
+              </ConnectButton.Custom>
+            )}
+          </div>
+        </div>
+      )}
     </nav>
   );
 }

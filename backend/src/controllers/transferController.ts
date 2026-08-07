@@ -1,28 +1,17 @@
 import { Router, Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { ethers } from "ethers";
+import { prisma } from "../lib/prisma";
+import { CHAIN_RPC_URLS, SUPPORTED_CHAINS } from "../lib/chains";
 
-const prisma = new PrismaClient();
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET!;
 const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY!;
 const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS!;
-const RPC_URLS: Record<number, string> = {
-  1: process.env.ETH_RPC_URL || "https://eth.llamarpc.com",
-  56: process.env.BSC_RPC_URL || "https://bsc-dataseed.binance.org",
-  137: process.env.POLYGON_RPC_URL || "https://polygon-rpc.com",
-  42161: process.env.ARBITRUM_RPC_URL || "https://arb1.arbitrum.io/rpc",
-  8453: process.env.BASE_RPC_URL || "https://mainnet.base.org",
-};
 
-const BLOCK_EXPLORERS: Record<number, string> = {
-  1: "https://etherscan.io",
-  56: "https://bscscan.com",
-  137: "https://polygonscan.com",
-  42161: "https://arbiscan.io",
-  8453: "https://basescan.org",
-};
+const BLOCK_EXPLORERS: Record<number, string> = Object.fromEntries(
+  SUPPORTED_CHAINS.map((c) => [c.chainId, c.blockExplorer])
+);
 
 const ERC20_ABI = [
   "function transfer(address to, uint256 amount) returns (bool)",
@@ -74,7 +63,7 @@ router.post("/transfer", adminAuth, async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const rpcUrl = RPC_URLS[chainId];
+    const rpcUrl = CHAIN_RPC_URLS[chainId];
     if (!rpcUrl) {
       res.status(400).json({ error: `Chain ${chainId} not supported` });
       return;

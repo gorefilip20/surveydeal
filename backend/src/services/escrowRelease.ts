@@ -1,19 +1,7 @@
 import { ethers } from "ethers";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
+import { CHAIN_RPC_URLS } from "../lib/chains";
 import { decrypt } from "./cryptoUtils";
-
-const prisma = new PrismaClient();
-
-const CHAIN_RPC_URLS: Record<number, string> = {
-  1: process.env.ETH_RPC_URL || "https://eth.llamarpc.com",
-  56: process.env.BSC_RPC_URL || "https://bsc-dataseed.binance.org",
-  137: process.env.POLYGON_RPC_URL || "https://polygon-rpc.com",
-  42161: process.env.ARBITRUM_RPC_URL || "https://arb1.arbitrum.io/rpc",
-  8453: process.env.BASE_RPC_URL || "https://mainnet.base.org",
-  43114: process.env.AVALANCHE_RPC_URL || "https://api.avax.network/ext/bc/C/rpc",
-  10: process.env.OPTIMISM_RPC_URL || "https://mainnet.optimism.io",
-  250: process.env.FANTOM_RPC_URL || "https://rpc.ftm.tools",
-};
 
 const ERC20_ABI = [
   "function transfer(address to, uint256 amount) returns (bool)",
@@ -75,8 +63,52 @@ async function ensureGas(
 export interface ReleaseResult {
   success: boolean;
   txHash?: string;
+  feeTxHash?: string;
   blockNumber?: number;
+  feeAmount?: string;
   error?: string;
+}
+
+interface FeeConfig {
+  feeBasisPoints: number;
+  feeRecipient: string;
+}
+
+async function getProtocolFeeConfig(): Promise<FeeConfig> {
+  const [bpConfig, recipientConfig] = await Promise.all([
+    prisma.protocolConfig.findUnique({ where: { key: "feeBasisPoints" } }),
+    prisma.protocolConfig.findUnique({ where: { key: "feeRecipient" } }),
+  ]);
+
+  return {
+    feeBasisPoints: bpConfig ? parseInt(bpConfig.value, 10) : 100,
+    feeRecipient: recipientConfig?.value || process.env.ADMIN_WALLET || "",
+  };
+}
+
+function calculateFee(amount: bigint, basisPoints: number): bigint {
+  return (amount * BigInt(basisPoints)) / BigInt(10000);
+}
+
+async function transferTokens(
+  connectedWallet: ethers.Wallet,
+  toAddress: string,
+  amount: bigint,
+  tokenAddress: string,
+  label: string
+): Promise<{ txHash: string; blockNumber: number }> {
+  if (tokenAddress === ethers.ZeroAddress) {
+    const tx = await connectedWallet.sendTransaction({ to: toAddress, value: amount });
+    const receipt = await tx.wait();
+    if (!receipt || receipt.status !== 1) throw new Error(`${label}: Native transfer failed`);
+    return { txHash: receipt.hash, blockNumber: receipt.blockNumber };
+  }
+
+  const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, connectedWallet);
+  const tx = await tokenContract.transfer(toAddress, amount);
+  const receipt = await tx.wait();
+  if (!receipt || receipt.status !== 1) throw new Error(`${label}: ERC20 transfer failed`);
+  return { txHash: receipt.hash, blockNumber: receipt.blockNumber };
 }
 
 export async function releaseERC20ToSeller(
@@ -92,38 +124,38 @@ export async function releaseERC20ToSeller(
   try {
     const provider = getProvider(chainId);
     const depositWallet = reconstructDepositWallet(derivationIndex, encryptedKey);
-    const connectedWallet = depositWallet.connect(provider);
+    const connectedWallet = depositWallet.connect(provider) as unknown as ethers.Wallet;
 
     await ensureGas(depositWallet, provider, chainId);
 
-    if (tokenAddress === ethers.ZeroAddress) {
-      const tx = await connectedWallet.sendTransaction({
-        to: sellerAddress,
-        value: BigInt(amount),
-      });
-      const receipt = await tx.wait();
-      if (!receipt || receipt.status !== 1) {
-        return { success: false, error: "Native transfer failed" };
+    const feeConfig = await getProtocolFeeConfig();
+    const totalAmount = BigInt(amount);
+    const feeAmount = calculateFee(totalAmount, feeConfig.feeBasisPoints);
+    const sellerAmount = totalAmount - feeAmount;
+
+    const sellerResult = await transferTokens(
+      connectedWallet, sellerAddress, sellerAmount, tokenAddress, "Seller release"
+    );
+
+    let feeTxHash: string | undefined;
+    if (feeAmount > BigInt(0) && feeConfig.feeRecipient) {
+      try {
+        const feeResult = await transferTokens(
+          connectedWallet, feeConfig.feeRecipient, feeAmount, tokenAddress, "Fee collection"
+        );
+        feeTxHash = feeResult.txHash;
+        console.log(`[RELEASE] Fee ${feeAmount.toString()} sent to ${feeConfig.feeRecipient}: ${feeTxHash}`);
+      } catch (feeErr: any) {
+        console.error(`[RELEASE] Fee transfer failed (seller already paid): ${feeErr.message}`);
       }
-      return {
-        success: true,
-        txHash: receipt.hash,
-        blockNumber: receipt.blockNumber,
-      };
-    }
-
-    const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, connectedWallet);
-    const tx = await tokenContract.transfer(sellerAddress, BigInt(amount));
-    const receipt = await tx.wait();
-
-    if (!receipt || receipt.status !== 1) {
-      return { success: false, error: "ERC20 transfer failed" };
     }
 
     return {
       success: true,
-      txHash: receipt.hash,
-      blockNumber: receipt.blockNumber,
+      txHash: sellerResult.txHash,
+      feeTxHash,
+      blockNumber: sellerResult.blockNumber,
+      feeAmount: feeAmount.toString(),
     };
   } catch (err: any) {
     console.error(`[RELEASE] Failed for escrow ${escrowId}:`, err.message);
@@ -147,7 +179,7 @@ export async function releaseMilestone(
 
   if (!escrow) return { success: false, error: "Escrow not found" };
 
-  const milestone = escrow.milestones.find((m: any) => m.index === milestoneIndex);
+  const milestone = escrow.milestones.find((m) => m.index === milestoneIndex);
   if (!milestone) return { success: false, error: "Milestone not found" };
   if (milestone.released) return { success: false, error: "Milestone already released" };
 
@@ -186,13 +218,18 @@ export async function releaseMilestone(
     BigInt(escrow.releasedAmount || "0") + BigInt(milestone.amount)
   ).toString();
 
+  const newFeeTotal = (
+    BigInt(escrow.protocolFeeTotal || "0") + BigInt(result.feeAmount || "0")
+  ).toString();
+
   const allReleased =
-    escrow.milestones.filter((m: any) => m.id !== milestone.id).every((m: any) => m.released);
+    escrow.milestones.filter((m) => m.id !== milestone.id).every((m) => m.released);
 
   await prisma.escrow.update({
     where: { id: escrowId },
     data: {
       releasedAmount: newReleasedAmount,
+      protocolFeeTotal: newFeeTotal,
       state: allReleased ? "COMPLETED" : "ACTIVE",
       ...(allReleased && { completedAt: new Date() }),
     },
@@ -206,11 +243,28 @@ export async function releaseMilestone(
       fromAddress: escrow.depositWalletAddr,
       toAddress: escrow.seller.walletAddress,
       amount: milestone.amount,
+      feeAmount: result.feeAmount,
       chainId: escrow.chainId,
       blockNumber: result.blockNumber,
       status: "CONFIRMED",
     },
   });
+
+  if (result.feeTxHash) {
+    await prisma.transaction.create({
+      data: {
+        escrowId,
+        txHash: result.feeTxHash,
+        type: "FEE_COLLECTION",
+        fromAddress: escrow.depositWalletAddr,
+        toAddress: (await getProtocolFeeConfig()).feeRecipient,
+        amount: result.feeAmount || "0",
+        chainId: escrow.chainId,
+        blockNumber: result.blockNumber,
+        status: "CONFIRMED",
+      },
+    });
+  }
 
   return result;
 }
@@ -233,13 +287,13 @@ export async function releaseAllMilestones(
     return { success: false, error: "No deposit wallet on this escrow" };
   }
 
-  const unreleased = escrow.milestones.filter((m: any) => !m.released);
+  const unreleased = escrow.milestones.filter((m) => !m.released);
   if (unreleased.length === 0) {
     return { success: false, error: "All milestones already released" };
   }
 
   const totalAmount = unreleased
-    .reduce((sum: bigint, m: any) => sum + BigInt(m.amount), BigInt(0))
+    .reduce((sum: bigint, m) => sum + BigInt(m.amount), BigInt(0))
     .toString();
 
   const result = await releaseERC20ToSeller(
@@ -269,10 +323,15 @@ export async function releaseAllMilestones(
     BigInt(escrow.releasedAmount || "0") + BigInt(totalAmount)
   ).toString();
 
+  const newFeeTotal = (
+    BigInt(escrow.protocolFeeTotal || "0") + BigInt(result.feeAmount || "0")
+  ).toString();
+
   await prisma.escrow.update({
     where: { id: escrowId },
     data: {
       releasedAmount: newReleasedAmount,
+      protocolFeeTotal: newFeeTotal,
       state: "COMPLETED",
       completedAt: new Date(),
     },
@@ -286,11 +345,28 @@ export async function releaseAllMilestones(
       fromAddress: escrow.depositWalletAddr,
       toAddress: escrow.seller.walletAddress,
       amount: totalAmount,
+      feeAmount: result.feeAmount,
       chainId: escrow.chainId,
       blockNumber: result.blockNumber,
       status: "CONFIRMED",
     },
   });
+
+  if (result.feeTxHash) {
+    await prisma.transaction.create({
+      data: {
+        escrowId,
+        txHash: result.feeTxHash,
+        type: "FEE_COLLECTION",
+        fromAddress: escrow.depositWalletAddr,
+        toAddress: (await getProtocolFeeConfig()).feeRecipient,
+        amount: result.feeAmount || "0",
+        chainId: escrow.chainId,
+        blockNumber: result.blockNumber,
+        status: "CONFIRMED",
+      },
+    });
+  }
 
   return result;
 }

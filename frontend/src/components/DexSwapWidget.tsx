@@ -5,7 +5,6 @@ import { useAccount, useChainId } from "wagmi";
 import {
   ArrowDownUp,
   ExternalLink,
-  RefreshCw,
   AlertCircle,
   Globe,
   Zap,
@@ -15,7 +14,6 @@ interface DexConfig {
   name: string;
   chainIds: number[];
   getSwapUrl: (params: { chainId: number; inputToken?: string; outputToken?: string }) => string;
-  color: string;
   description: string;
 }
 
@@ -31,7 +29,6 @@ const DEX_AGGREGATORS: DexConfig[] = [
       if (outputToken) params.set("outputCurrency", outputToken);
       return params.toString() ? `${base}?${params}` : base;
     },
-    color: "from-pink-400 to-purple-500",
     description: "Leading EVM DEX — Ethereum, Arbitrum, Base, Polygon, Optimism",
   },
   {
@@ -45,7 +42,6 @@ const DEX_AGGREGATORS: DexConfig[] = [
       if (chainId) params.set("chain", getPancakeChainName(chainId));
       return params.toString() ? `${base}?${params}` : base;
     },
-    color: "from-amber-400 to-yellow-500",
     description: "Top BNB Chain DEX — also on Ethereum, Arbitrum, Base",
   },
   {
@@ -57,7 +53,6 @@ const DEX_AGGREGATORS: DexConfig[] = [
       if (inputToken && outputToken) return `${base}/${inputToken}/${outputToken}`;
       return base;
     },
-    color: "from-blue-400 to-indigo-500",
     description: "Multi-chain aggregator — finds best rates across 400+ liquidity sources",
   },
   {
@@ -71,7 +66,6 @@ const DEX_AGGREGATORS: DexConfig[] = [
       if (outputToken) params.set("to", outputToken);
       return params.toString() ? `${base}?${params}` : `${base}?network=${chainId || 1}`;
     },
-    color: "from-cyan-400 to-blue-500",
     description: "Advanced multi-chain aggregator with MEV protection",
   },
 ];
@@ -146,7 +140,6 @@ const CHAIN_NAMES: Record<number, string> = {
   10: "Optimism",
   43114: "Avalanche",
   250: "Fantom",
-  31337: "Local Testnet",
 };
 
 interface DexSwapWidgetProps {
@@ -172,43 +165,43 @@ export default function DexSwapWidget({ defaultChainId, defaultOutputToken }: De
   const tokens = POPULAR_TOKENS[selectedChainId] || [];
 
   const handleOpenDex = (dex: DexConfig) => {
-    const url = dex.getSwapUrl({ chainId: selectedChainId, inputToken, outputToken });
-    window.open(url, "_blank", "noopener,noreferrer");
+    window.open(
+      dex.getSwapUrl({ chainId: selectedChainId, inputToken, outputToken }),
+      "_blank",
+      "noopener,noreferrer"
+    );
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-            <ArrowDownUp className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-white">DEX Swap</h2>
-            <p className="text-xs text-slate-400">Swap tokens via live DEX aggregators</p>
-          </div>
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-accent flex items-center justify-center">
+          <ArrowDownUp className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <h3 className="text-base font-heading font-extrabold text-text">DEX Swap</h3>
+          <p className="text-xs opacity-60">Swap tokens via live DEX aggregators</p>
         </div>
       </div>
 
       {/* Chain Selector */}
       <div>
-        <label className="text-sm font-medium text-slate-300 mb-2 block">Network</label>
+        <label className="text-xs uppercase tracking-wider font-semibold opacity-50 mb-2 block">Network</label>
         <div className="flex flex-wrap gap-2">
-          {Object.entries(CHAIN_NAMES)
-            .filter(([id]) => Number(id) !== 31337)
-            .map(([id, name]) => (
-              <button
-                key={id}
-                onClick={() => { setSelectedChainId(Number(id)); setSelectedDex(null); }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  selectedChainId === Number(id)
-                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                    : "bg-white/[0.03] text-slate-400 border border-white/5 hover:bg-white/[0.06]"
-                }`}
-              >
-                {name}
-              </button>
-            ))}
+          {Object.entries(CHAIN_NAMES).map(([id, name]) => (
+            <button
+              key={id}
+              onClick={() => { setSelectedChainId(Number(id)); setSelectedDex(null); }}
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors border-2 ${
+                selectedChainId === Number(id)
+                  ? "bg-accent text-white border-accent"
+                  : "bg-transparent border-divider text-text hover:border-accent"
+              }`}
+            >
+              {name}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -216,16 +209,16 @@ export default function DexSwapWidget({ defaultChainId, defaultOutputToken }: De
       {tokens.length > 0 && (
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="text-xs text-slate-400 mb-1.5 block">From Token</label>
+            <label className="text-xs uppercase tracking-wider font-semibold opacity-50 mb-1.5 block">From Token</label>
             <div className="flex flex-wrap gap-1.5">
               {tokens.map((t) => (
                 <button
                   key={`from-${t.address}`}
                   onClick={() => setInputToken(t.address)}
-                  className={`px-2.5 py-1 rounded-md text-xs transition-all ${
+                  className={`px-2.5 py-1 text-xs font-semibold transition-colors border-2 ${
                     inputToken === t.address
-                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                      : "bg-white/[0.03] text-slate-400 border border-white/5 hover:bg-white/[0.06]"
+                      ? "bg-accent text-white border-accent"
+                      : "bg-transparent border-divider text-text hover:border-accent"
                   }`}
                 >
                   {t.symbol}
@@ -234,16 +227,16 @@ export default function DexSwapWidget({ defaultChainId, defaultOutputToken }: De
             </div>
           </div>
           <div>
-            <label className="text-xs text-slate-400 mb-1.5 block">To Token</label>
+            <label className="text-xs uppercase tracking-wider font-semibold opacity-50 mb-1.5 block">To Token</label>
             <div className="flex flex-wrap gap-1.5">
               {tokens.map((t) => (
                 <button
                   key={`to-${t.address}`}
                   onClick={() => setOutputToken(t.address)}
-                  className={`px-2.5 py-1 rounded-md text-xs transition-all ${
+                  className={`px-2.5 py-1 text-xs font-semibold transition-colors border-2 ${
                     outputToken === t.address
-                      ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
-                      : "bg-white/[0.03] text-slate-400 border border-white/5 hover:bg-white/[0.06]"
+                      ? "bg-accent text-white border-accent"
+                      : "bg-transparent border-divider text-text hover:border-accent"
                   }`}
                 >
                   {t.symbol}
@@ -257,67 +250,65 @@ export default function DexSwapWidget({ defaultChainId, defaultOutputToken }: De
       {/* Custom Token Input */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="text-xs text-slate-400 mb-1 block">Custom From Address</label>
+          <label className="text-xs uppercase tracking-wider font-semibold opacity-50 mb-1 block">Custom From Address</label>
           <input
             value={inputToken.startsWith("0xEeee") ? "" : inputToken}
             onChange={(e) => setInputToken(e.target.value)}
             placeholder="0x... (any token)"
-            className="w-full px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-white text-xs placeholder-slate-600 focus:border-emerald-500/50 focus:outline-none"
+            className="sd-input w-full font-mono text-xs"
           />
         </div>
         <div>
-          <label className="text-xs text-slate-400 mb-1 block">Custom To Address</label>
+          <label className="text-xs uppercase tracking-wider font-semibold opacity-50 mb-1 block">Custom To Address</label>
           <input
             value={outputToken.startsWith("0xEeee") ? "" : outputToken}
             onChange={(e) => setOutputToken(e.target.value)}
             placeholder="0x... (memecoin, any ERC-20)"
-            className="w-full px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-white text-xs placeholder-slate-600 focus:border-purple-500/50 focus:outline-none"
+            className="sd-input w-full font-mono text-xs"
           />
         </div>
       </div>
 
       {/* Available DEX Aggregators */}
       <div>
-        <label className="text-sm font-medium text-slate-300 mb-3 block flex items-center gap-2">
-          <Zap className="w-4 h-4 text-amber-400" />
-          Available DEX Aggregators on {CHAIN_NAMES[selectedChainId]}
+        <label className="text-xs uppercase tracking-wider font-semibold opacity-50 mb-3 block flex items-center gap-2">
+          <Zap className="w-3.5 h-3.5 text-accent" />
+          Available on {CHAIN_NAMES[selectedChainId]}
         </label>
 
         {availableDexes.length === 0 ? (
-          <div className="p-4 rounded-xl border border-white/5 bg-white/[0.02] text-center">
-            <AlertCircle className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-            <p className="text-sm text-slate-400">No DEX aggregators available for this network.</p>
-            <p className="text-xs text-slate-500 mt-1">Try Ethereum, BNB Chain, or Arbitrum.</p>
+          <div className="p-6 border-2 border-divider text-center">
+            <AlertCircle className="w-8 h-8 opacity-30 mx-auto mb-2" />
+            <p className="text-sm opacity-60">No DEX aggregators available for this network.</p>
+            <p className="text-xs opacity-40 mt-1">Try Ethereum, BNB Chain, or Arbitrum.</p>
           </div>
         ) : (
-          <div className="grid gap-3">
+          <div className="space-y-0">
             {availableDexes.map((dex) => (
               <button
                 key={dex.name}
                 onClick={() => handleOpenDex(dex)}
-                className="w-full p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/10 transition-all text-left group"
+                className="w-full flex items-center justify-between p-4 border-2 border-divider -mt-[2px] first:mt-0 bg-bg hover:border-accent transition-colors text-left group"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${dex.color} flex items-center justify-center`}>
-                      <Globe className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-white text-sm">{dex.name}</h3>
-                      <p className="text-xs text-slate-400">{dex.description}</p>
-                    </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-accent flex items-center justify-center text-white flex-shrink-0">
+                    <Globe className="w-4 h-4" />
                   </div>
-                  <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                  <div>
+                    <p className="font-heading font-extrabold text-sm text-text">{dex.name}</p>
+                    <p className="text-xs opacity-50">{dex.description}</p>
+                  </div>
                 </div>
+                <ExternalLink className="w-4 h-4 opacity-30 group-hover:text-accent group-hover:opacity-100 transition-all flex-shrink-0" />
               </button>
             ))}
           </div>
         )}
       </div>
 
-      <div className="p-3 rounded-lg border border-slate-700/50 bg-slate-800/30">
-        <p className="text-xs text-slate-500 leading-relaxed">
-          Swaps open in the DEX aggregator&apos;s official interface. You trade directly with the DEX using your connected wallet — Surveydeal never touches your swap funds. Supports all tokens including memecoins and tax tokens.
+      <div className="p-3 border-2 border-divider bg-surface">
+        <p className="text-xs opacity-50 leading-relaxed">
+          Swaps open in the DEX aggregator&apos;s official interface. You trade directly with the DEX using your connected wallet — SurveyDeal never touches your swap funds. Supports all tokens including memecoins and tax tokens.
         </p>
       </div>
     </div>

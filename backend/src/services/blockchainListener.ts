@@ -1,18 +1,6 @@
-import { PrismaClient } from "@prisma/client";
 import { ethers } from "ethers";
-
-const prisma = new PrismaClient();
-
-const CHAIN_RPC_URLS: Record<number, string> = {
-  1: process.env.ETH_RPC_URL || "https://eth.llamarpc.com",
-  56: process.env.BSC_RPC_URL || "https://bsc-dataseed.binance.org",
-  137: process.env.POLYGON_RPC_URL || "https://polygon-rpc.com",
-  42161: process.env.ARBITRUM_RPC_URL || "https://arb1.arbitrum.io/rpc",
-  8453: process.env.BASE_RPC_URL || "https://mainnet.base.org",
-  43114: process.env.AVALANCHE_RPC_URL || "https://api.avax.network/ext/bc/C/rpc",
-  10: process.env.OPTIMISM_RPC_URL || "https://mainnet.optimism.io",
-  250: process.env.FANTOM_RPC_URL || "https://rpc.ftm.tools",
-};
+import { prisma } from "../lib/prisma";
+import { CHAIN_RPC_URLS } from "../lib/chains";
 
 const ERC20_ABI = [
   "event Transfer(address indexed from, address indexed to, uint256 value)",

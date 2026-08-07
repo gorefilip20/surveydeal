@@ -102,6 +102,15 @@ export default function AdminDashboard() {
   const [page, setPage] = useState(1);
   const [tokens, setTokens] = useState<any[]>([]);
   const [disputes, setDisputes] = useState<any[]>([]);
+  const [feedback, setFeedback] = useState("");
+  const [feedbackType, setFeedbackType] = useState<"error" | "success">("error");
+  const [promptState, setPromptState] = useState<{ msg: string; value: string; fn: (val: string) => void } | null>(null);
+  const [loginError, setLoginError] = useState("");
+
+  const showFeedback = (msg: string, type: "error" | "success" = "error") => {
+    setFeedback(msg);
+    setFeedbackType(type);
+  };
 
   useEffect(() => {
     const stored = localStorage.getItem("admin_token");
@@ -177,33 +186,40 @@ export default function AdminDashboard() {
       });
       const data = await res.json();
       if (res.ok) {
+        showFeedback(`Token status updated to ${status}`, "success");
         loadTokens();
       } else {
-        alert(data.error || "Failed to update token status");
+        showFeedback(data.error || "Failed to update token status");
       }
-    } catch (err) {
-      alert("Failed to update token status");
+    } catch {
+      showFeedback("Failed to update token status");
     }
   };
 
-  const resolveDispute = async (disputeId: string, outcome: string) => {
-    const notes = prompt("Resolution notes (optional):");
-    if (notes === null) return;
-    try {
-      const res = await fetch(`${API}/admin/disputes/${disputeId}/resolve`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ outcome, notes }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        loadDisputes();
-      } else {
-        alert(data.error || "Failed to resolve dispute");
-      }
-    } catch (err) {
-      alert("Failed to resolve dispute");
-    }
+  const resolveDispute = (disputeId: string, outcome: string) => {
+    setPromptState({
+      msg: `Resolution notes for ${outcome} (optional):`,
+      value: "",
+      fn: async (notes: string) => {
+        setPromptState(null);
+        try {
+          const res = await fetch(`${API}/admin/disputes/${disputeId}/resolve`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ outcome, notes }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            showFeedback(`Dispute resolved: ${outcome}`, "success");
+            loadDisputes();
+          } else {
+            showFeedback(data.error || "Failed to resolve dispute");
+          }
+        } catch {
+          showFeedback("Failed to resolve dispute");
+        }
+      },
+    });
   };
 
   useEffect(() => {
@@ -224,13 +240,13 @@ export default function AdminDashboard() {
       });
       const data = await res.json();
       if (data.success) {
-        alert(`Approved! Tx: ${data.txHash}`);
+        showFeedback(`Milestone approved. Tx: ${data.txHash?.slice(0, 16)}...`, "success");
         loadEscrows();
       } else {
-        alert(`Error: ${data.error}`);
+        showFeedback(data.error || "Failed to approve milestone");
       }
-    } catch (err) {
-      alert("Failed to approve milestone");
+    } catch {
+      showFeedback("Failed to approve milestone");
     }
   };
 
@@ -242,30 +258,38 @@ export default function AdminDashboard() {
       });
       const data = await res.json();
       if (data.success) {
-        alert(`All milestones approved! Tx: ${data.txHash}`);
+        showFeedback(`All milestones approved. Tx: ${data.txHash?.slice(0, 16)}...`, "success");
         loadEscrows();
+      } else {
+        showFeedback(data.error || "Failed to approve all");
       }
-    } catch (err) {
-      alert("Failed to approve all");
+    } catch {
+      showFeedback("Failed to approve all");
     }
   };
 
-  const toggleFreeze = async (userId: string, currentlyFrozen: boolean) => {
-    const reason = prompt(`Reason to ${currentlyFrozen ? "unfreeze" : "freeze"} this user:`);
-    if (reason === null) return;
-    try {
-      await fetch(`${API}/admin/users/${userId}/status`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify({
-          status: currentlyFrozen ? "ACTIVE" : "FROZEN",
-          reason,
-        }),
-      });
-      loadUserAssets();
-    } catch (err) {
-      alert("Failed to update user status");
-    }
+  const toggleFreeze = (userId: string, currentlyFrozen: boolean) => {
+    setPromptState({
+      msg: `Reason to ${currentlyFrozen ? "unfreeze" : "freeze"} this user:`,
+      value: "",
+      fn: async (reason: string) => {
+        setPromptState(null);
+        try {
+          await fetch(`${API}/admin/users/${userId}/status`, {
+            method: "PATCH",
+            headers,
+            body: JSON.stringify({
+              status: currentlyFrozen ? "ACTIVE" : "FROZEN",
+              reason,
+            }),
+          });
+          showFeedback(`User ${currentlyFrozen ? "unfrozen" : "frozen"}`, "success");
+          loadUserAssets();
+        } catch {
+          showFeedback("Failed to update user status");
+        }
+      },
+    });
   };
 
   // Login Screen
@@ -294,11 +318,16 @@ export default function AdminDashboard() {
                 localStorage.setItem("admin_token", data.token);
                 setToken(data.token);
               } else {
-                alert(data.error || "Login failed");
+                setLoginError(data.error || "Login failed");
               }
             }}
             className="space-y-4"
           >
+            {loginError && (
+              <div className="border-2 border-accent bg-accent/5 text-accent px-4 py-3 text-sm">
+                {loginError}
+              </div>
+            )}
             <input
               name="email"
               type="email"
@@ -377,6 +406,34 @@ export default function AdminDashboard() {
       </nav>
 
       <div className="max-w-[1120px] mx-auto px-6 py-6">
+        {/* Feedback */}
+        {feedback && (
+          <div className={`px-4 py-3 mb-6 text-sm border-2 ${
+            feedbackType === "error"
+              ? "border-accent bg-accent-100 text-accent-700"
+              : "border-green-600 bg-green-600/5 text-green-700"
+          }`}>
+            {feedback}
+            <button onClick={() => setFeedback("")} className="float-right opacity-50 hover:opacity-100">&times;</button>
+          </div>
+        )}
+        {promptState && (
+          <div className="px-4 py-3 mb-6 border-2 border-divider bg-surface">
+            <p className="text-sm font-semibold mb-2">{promptState.msg}</p>
+            <input
+              type="text"
+              value={promptState.value}
+              onChange={(e) => setPromptState({ ...promptState, value: e.target.value })}
+              className="sd-input w-full mb-2"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button onClick={() => promptState.fn(promptState.value)} className="btn btn-primary text-xs px-3 py-1.5">Submit</button>
+              <button onClick={() => setPromptState(null)} className="btn btn-secondary text-xs px-3 py-1.5">Cancel</button>
+            </div>
+          </div>
+        )}
+
         {/* Page Header */}
         <div className="mb-6">
           <p className="text-xs uppercase tracking-wider font-semibold text-accent mb-1">Admin</p>

@@ -1,15 +1,12 @@
 import { ethers } from "ethers";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
+import { EVM_CHAIN_IDS } from "../lib/chains";
 import { encrypt } from "./cryptoUtils";
-
-const prisma = new PrismaClient();
 
 const MNEMONIC = process.env.GENERATION_MNEMONIC || process.env.BIP32_MNEMONIC;
 const BASE_DERIVATION_PATH = "m/44'/60'/0'/0";
 
 let derivationCounter = -1;
-
-const EVM_CHAIN_IDS = [1, 56, 137, 42161, 8453, 43114, 10, 250];
 
 async function getNextDerivationIndex(): Promise<number> {
   if (derivationCounter >= 0) {

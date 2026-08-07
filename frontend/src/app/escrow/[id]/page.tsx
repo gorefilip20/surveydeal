@@ -46,6 +46,9 @@ export default function EscrowDetailPage() {
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatRoomId, setChatRoomId] = useState("");
   const [chatInput, setChatInput] = useState("");
+  const [showVerifyInput, setShowVerifyInput] = useState(false);
+  const [verifyTxHash, setVerifyTxHash] = useState("");
+  const [confirmAction, setConfirmAction] = useState<{ msg: string; fn: () => void } | null>(null);
 
   useEffect(() => {
     const stored =
@@ -118,20 +121,26 @@ export default function EscrowDetailPage() {
   };
 
   const verifyDeposit = async () => {
-    const txHash = window.prompt(
-      "Enter the deposit transaction hash to verify:"
-    );
-    if (!txHash) return;
+    if (!showVerifyInput) {
+      setShowVerifyInput(true);
+      return;
+    }
+    if (!verifyTxHash.trim()) {
+      showMsg("Please enter a transaction hash", "error");
+      return;
+    }
     setActionLoading(true);
     try {
       const res = await fetch(`${API}/escrows/${escrowId}/verify-deposit`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ txHash }),
+        body: JSON.stringify({ txHash: verifyTxHash.trim() }),
       });
       const data = await res.json();
       if (data.success) {
         showMsg("Deposit verified and confirmed.");
+        setShowVerifyInput(false);
+        setVerifyTxHash("");
         loadEscrow();
       } else {
         showMsg(
@@ -265,26 +274,31 @@ export default function EscrowDetailPage() {
     setActionLoading(false);
   };
 
-  const requestRefund = async () => {
-    if (!confirm("Are you sure you want to request a refund? This will mark the escrow for review.")) return;
-    setActionLoading(true);
-    try {
-      const res = await fetch(`${API}/escrows/${escrowId}/state`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify({ state: "REFUNDED" }),
-      });
-      const data = await res.json();
-      if (data.id) {
-        showMsg("Refund requested. The escrow has been marked for refund.");
-        loadEscrow();
-      } else {
-        showMsg(data.error || "Failed to request refund", "error");
-      }
-    } catch {
-      showMsg("Network error", "error");
-    }
-    setActionLoading(false);
+  const requestRefund = () => {
+    setConfirmAction({
+      msg: "Are you sure you want to request a refund? This will mark the escrow for review.",
+      fn: async () => {
+        setConfirmAction(null);
+        setActionLoading(true);
+        try {
+          const res = await fetch(`${API}/escrows/${escrowId}/state`, {
+            method: "PATCH",
+            headers,
+            body: JSON.stringify({ state: "REFUNDED" }),
+          });
+          const data = await res.json();
+          if (data.id) {
+            showMsg("Refund requested. The escrow has been marked for refund.");
+            loadEscrow();
+          } else {
+            showMsg(data.error || "Failed to request refund", "error");
+          }
+        } catch {
+          showMsg("Network error", "error");
+        }
+        setActionLoading(false);
+      },
+    });
   };
 
   const copyAddress = (addr: string) => {
@@ -403,6 +417,15 @@ export default function EscrowDetailPage() {
             >
               &times;
             </button>
+          </div>
+        )}
+        {confirmAction && (
+          <div className="px-4 py-3 mb-6 text-sm border-2 border-yellow-600 bg-yellow-600/5 flex items-center justify-between">
+            <span className="text-yellow-700">{confirmAction.msg}</span>
+            <div className="flex gap-2 flex-shrink-0 ml-4">
+              <button onClick={confirmAction.fn} className="btn btn-primary text-xs px-3 py-1.5">Confirm</button>
+              <button onClick={() => setConfirmAction(null)} className="btn btn-secondary text-xs px-3 py-1.5">Cancel</button>
+            </div>
           </div>
         )}
 
@@ -858,13 +881,22 @@ export default function EscrowDetailPage() {
                         )}
                         {copied ? "Copied!" : "Copy Address"}
                       </button>
+                      {showVerifyInput && (
+                        <input
+                          type="text"
+                          placeholder="0x... transaction hash"
+                          value={verifyTxHash}
+                          onChange={(e) => setVerifyTxHash(e.target.value)}
+                          className="sd-input w-full font-mono text-xs"
+                        />
+                      )}
                       <button
                         onClick={verifyDeposit}
                         disabled={actionLoading}
                         className="btn btn-secondary w-full disabled:opacity-40"
                       >
                         <RefreshCw size={16} />
-                        {actionLoading ? "Checking..." : "Verify Deposit"}
+                        {actionLoading ? "Checking..." : showVerifyInput ? "Submit Verification" : "Verify Deposit"}
                       </button>
                     </>
                   ) : escrow.state === "CREATED" && isBuyer ? (

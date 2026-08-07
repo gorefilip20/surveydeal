@@ -1,11 +1,15 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { ethers } from "ethers";
+import bcrypt from "bcryptjs";
+import { prisma } from "../lib/prisma";
+import { SUPPORTED_CHAINS } from "../lib/chains";
 import { releaseMilestone, releaseAllMilestones } from "../services/escrowRelease";
+import { processRefund } from "../services/refundService";
 import { authLimiter } from "../middleware/rateLimiter";
+import { validate } from "../middleware/validate";
+import { adminLoginSchema, adminDisputeResolveSchema, adminTokenStatusSchema, adminUserStatusSchema } from "../middleware/schemas";
 
-const prisma = new PrismaClient();
 const router = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -54,18 +58,27 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const ADMIN_WALLET = process.env.ADMIN_WALLET || "0xf39Fd6e51aad88F6F4ce6aB8827279cFfFb92266";
 
-router.post("/auth/simple-login", authLimiter, async (req: Request, res: Response) => {
+let adminPasswordHash: string | null = null;
+(async () => {
+  if (ADMIN_PASSWORD) {
+    adminPasswordHash = await bcrypt.hash(ADMIN_PASSWORD, 12);
+  }
+})();
+
+router.post("/auth/simple-login", authLimiter, validate(adminLoginSchema), async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
       res.status(400).json({ error: "Email and password are required" });
       return;
     }
-    if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    if (!ADMIN_EMAIL || !adminPasswordHash) {
       res.status(500).json({ error: "Admin credentials not configured" });
       return;
     }
-    if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
+    const emailMatch = email === ADMIN_EMAIL;
+    const passwordMatch = await bcrypt.compare(password, adminPasswordHash);
+    if (!emailMatch || !passwordMatch) {
       res.status(401).json({ error: "Invalid admin credentials" });
       return;
     }
@@ -638,7 +651,7 @@ router.get("/users", authMiddleware, async (req: AuthRequest, res: Response) => 
   }
 });
 
-router.patch("/users/:id/status", authMiddleware, async (req: AuthRequest, res: Response) => {
+router.patch("/users/:id/status", authMiddleware, validate(adminUserStatusSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { status, reason } = req.body;
     if (!["ACTIVE", "FROZEN"].includes(status)) {
@@ -704,7 +717,7 @@ router.get("/disputes", authMiddleware, async (req: AuthRequest, res: Response) 
   }
 });
 
-router.post("/disputes/:id/resolve", authMiddleware, async (req: AuthRequest, res: Response) => {
+router.post("/disputes/:id/resolve", authMiddleware, validate(adminDisputeResolveSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { outcome } = req.body;
     if (!["BUYER_FAVORED", "SELLER_FAVORED", "SPLIT"].includes(outcome)) {
@@ -727,7 +740,11 @@ router.post("/disputes/:id/resolve", authMiddleware, async (req: AuthRequest, re
     if (outcome === "SELLER_FAVORED") {
       await prisma.escrow.update({ where: { id: dispute.escrowId }, data: { state: "ACTIVE" } });
     } else if (outcome === "BUYER_FAVORED") {
-      await prisma.escrow.update({ where: { id: dispute.escrowId }, data: { state: "REFUNDED" } });
+      const refundResult = await processRefund(dispute.escrowId);
+      if (!refundResult.success) {
+        res.status(500).json({ error: `Refund failed: ${refundResult.error}` });
+        return;
+      }
     } else {
       await prisma.escrow.update({ where: { id: dispute.escrowId }, data: { state: "ACTIVE" } });
     }
@@ -771,7 +788,7 @@ router.get("/tokens", authMiddleware, async (req: AuthRequest, res: Response) =>
   }
 });
 
-router.patch("/tokens/:id/status", authMiddleware, async (req: AuthRequest, res: Response) => {
+router.patch("/tokens/:id/status", authMiddleware, validate(adminTokenStatusSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { status } = req.body;
     if (!["ACTIVE", "BLACKLISTED", "FEATURED"].includes(status)) {

@@ -9,6 +9,7 @@ import {
 import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { config } from "@/wagmi.config";
+import { AuthProvider } from "@/components/AuthProvider";
 
 import "@rainbow-me/rainbowkit/styles.css";
 
@@ -106,7 +107,9 @@ export function Providers({ children }: { children: ReactNode }) {
           }}
           showRecentTransactions={true}
         >
-          {children}
+          <AuthProvider>
+            {children}
+          </AuthProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

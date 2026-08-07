@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAccount, useSignMessage } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Wallet, Loader2, CheckCircle } from "lucide-react";
+import { useAuth } from "@/components/AuthProvider";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
@@ -14,6 +15,7 @@ interface WalletLoginProps {
 export default function WalletLogin({ onAuthenticated }: WalletLoginProps) {
   const { address, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
+  const { login } = useAuth();
   const [status, setStatus] = useState<"idle" | "signing" | "verifying" | "done" | "error">("idle");
   const [error, setError] = useState("");
 
@@ -43,7 +45,7 @@ export default function WalletLogin({ onAuthenticated }: WalletLoginProps) {
       const loginData = await loginRes.json();
       if (!loginRes.ok) throw new Error(loginData.error || "Login failed");
 
-      localStorage.setItem("user_token", loginData.token);
+      login(loginData.token);
       setStatus("done");
       onAuthenticated(loginData.token);
     } catch (err: any) {
