@@ -65,8 +65,6 @@ enum ChainNetwork {
   POLYGON
   ARBITRUM
   BASE
-  SOLANA
-  TRON
   AVALANCHE
   OPTIMISM
   FANTOM

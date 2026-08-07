@@ -25,6 +25,7 @@ export default function Nav() {
   const links = [
     { href: "/dashboard", label: "Dashboard" },
     { href: "/escrow/create", label: "Create" },
+    { href: "/swap", label: "Swap" },
     { href: "/admin", label: "Admin" },
   ];
 

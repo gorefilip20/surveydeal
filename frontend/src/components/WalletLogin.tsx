@@ -28,7 +28,7 @@ export default function WalletLogin({ onAuthenticated }: WalletLoginProps) {
       const nonceData = await nonceRes.json();
       if (!nonceRes.ok) throw new Error(nonceData.error || "Failed to get nonce");
 
-      const message = `Sign this message to authenticate with SurveyDeal.\n\nWallet: ${address}\nNonce: ${nonceData.nonce}`;
+      const message = nonceData.message;
 
       const signature = await signMessageAsync({ message });
 

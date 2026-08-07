@@ -669,6 +669,129 @@ router.patch("/users/:id/status", authMiddleware, async (req: AuthRequest, res: 
 });
 
 // ══════════════════════════════════════════════════════════════
+//  ADMIN DISPUTE MANAGEMENT
+// ══════════════════════════════════════════════════════════════
+
+router.get("/disputes", authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { outcome, page = "1", limit = "20" } = req.query;
+    const where: any = {};
+    if (outcome) where.outcome = outcome as string;
+
+    const pageNum = Math.max(1, Number(page));
+    const limitNum = Math.min(100, Math.max(1, Number(limit)));
+
+    const [disputes, total] = await Promise.all([
+      prisma.dispute.findMany({
+        where,
+        include: {
+          escrow: { select: { id: true, title: true, onChainId: true, state: true, totalAmount: true, network: true } },
+          initiator: { select: { id: true, walletAddress: true, displayName: true } },
+          resolver: { select: { id: true, walletAddress: true, displayName: true } },
+          milestone: { select: { id: true, index: true, description: true, amount: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: (pageNum - 1) * limitNum,
+        take: limitNum,
+      }),
+      prisma.dispute.count({ where }),
+    ]);
+
+    res.json({ disputes, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
+  } catch (err: any) {
+    console.error("[ADMIN DISPUTES]", err);
+    res.status(500).json({ error: "Failed to fetch disputes" });
+  }
+});
+
+router.post("/disputes/:id/resolve", authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { outcome } = req.body;
+    if (!["BUYER_FAVORED", "SELLER_FAVORED", "SPLIT"].includes(outcome)) {
+      res.status(400).json({ error: "outcome must be BUYER_FAVORED, SELLER_FAVORED, or SPLIT" });
+      return;
+    }
+
+    const dispute = await prisma.dispute.findUnique({
+      where: { id: req.params.id as string },
+      include: { escrow: true },
+    });
+    if (!dispute) { res.status(404).json({ error: "Dispute not found" }); return; }
+    if (dispute.outcome !== "PENDING") { res.status(400).json({ error: "Dispute already resolved" }); return; }
+
+    await prisma.dispute.update({
+      where: { id: dispute.id },
+      data: { outcome, resolverId: req.adminId, resolvedAt: new Date() },
+    });
+
+    if (outcome === "SELLER_FAVORED") {
+      await prisma.escrow.update({ where: { id: dispute.escrowId }, data: { state: "ACTIVE" } });
+    } else if (outcome === "BUYER_FAVORED") {
+      await prisma.escrow.update({ where: { id: dispute.escrowId }, data: { state: "REFUNDED" } });
+    } else {
+      await prisma.escrow.update({ where: { id: dispute.escrowId }, data: { state: "ACTIVE" } });
+    }
+
+    await auditLog(req.adminId!, "RESOLVE_DISPUTE", "dispute", dispute.id, { outcome, escrowId: dispute.escrowId }, req.ip || "");
+
+    res.json({ success: true, outcome });
+  } catch (err: any) {
+    console.error("[ADMIN RESOLVE DISPUTE]", err);
+    res.status(500).json({ error: "Failed to resolve dispute" });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+//  ADMIN TOKEN MANAGEMENT
+// ══════════════════════════════════════════════════════════════
+
+router.get("/tokens", authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { status, chainId, page = "1", limit = "50" } = req.query;
+    const where: any = {};
+    if (status) where.status = status as string;
+    if (chainId) where.chainId = Number(chainId);
+
+    const pageNum = Math.max(1, Number(page));
+    const limitNum = Math.min(200, Math.max(1, Number(limit)));
+
+    const [tokens, total] = await Promise.all([
+      prisma.token.findMany({
+        where,
+        orderBy: [{ status: "desc" }, { symbol: "asc" }],
+        skip: (pageNum - 1) * limitNum,
+        take: limitNum,
+      }),
+      prisma.token.count({ where }),
+    ]);
+
+    res.json({ tokens, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
+  } catch {
+    res.status(500).json({ error: "Failed to fetch tokens" });
+  }
+});
+
+router.patch("/tokens/:id/status", authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { status } = req.body;
+    if (!["ACTIVE", "BLACKLISTED", "FEATURED"].includes(status)) {
+      res.status(400).json({ error: "status must be ACTIVE, BLACKLISTED, or FEATURED" });
+      return;
+    }
+
+    const token = await prisma.token.update({
+      where: { id: req.params.id as string },
+      data: { status },
+    });
+
+    await auditLog(req.adminId!, "UPDATE_TOKEN_STATUS", "token", token.id, { status, symbol: token.symbol }, req.ip || "");
+    res.json(token);
+  } catch {
+    res.status(500).json({ error: "Failed to update token status" });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 //  SUPPORTED CHAINS ENDPOINT
 // ══════════════════════════════════════════════════════════════
 

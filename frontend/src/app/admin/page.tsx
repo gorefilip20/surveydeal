@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ArrowLeft, Search, LogOut, Check, Shield, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Search, LogOut, Check, Shield, AlertTriangle, Star, Ban, Eye } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
@@ -90,7 +90,7 @@ const NETWORK_ABBR: Record<string, string> = {
 };
 
 export default function AdminDashboard() {
-  const [tab, setTab] = useState<"overview" | "users" | "escrows" | "tokens">("overview");
+  const [tab, setTab] = useState<"overview" | "users" | "escrows" | "tokens" | "disputes">("overview");
   const [token, setToken] = useState("");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [userAssets, setUserAssets] = useState<UserAsset[]>([]);
@@ -100,6 +100,8 @@ export default function AdminDashboard() {
   const [selectedUser, setSelectedUser] = useState<UserAsset | null>(null);
   const [selectedEscrow, setSelectedEscrow] = useState<any>(null);
   const [page, setPage] = useState(1);
+  const [tokens, setTokens] = useState<any[]>([]);
+  const [disputes, setDisputes] = useState<any[]>([]);
 
   useEffect(() => {
     const stored = localStorage.getItem("admin_token");
@@ -142,11 +144,75 @@ export default function AdminDashboard() {
     setLoading(false);
   }, [token, search, page]);
 
+  const loadTokens = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/admin/tokens?page=${page}`, { headers });
+      const data = await res.json();
+      setTokens(data.tokens || []);
+    } catch (err) {
+      console.error("Failed to load tokens", err);
+    }
+    setLoading(false);
+  }, [token, page]);
+
+  const loadDisputes = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/admin/disputes?page=${page}`, { headers });
+      const data = await res.json();
+      setDisputes(data.disputes || []);
+    } catch (err) {
+      console.error("Failed to load disputes", err);
+    }
+    setLoading(false);
+  }, [token, page]);
+
+  const updateTokenStatus = async (tokenId: string, status: string) => {
+    try {
+      const res = await fetch(`${API}/admin/tokens/${tokenId}/status`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        loadTokens();
+      } else {
+        alert(data.error || "Failed to update token status");
+      }
+    } catch (err) {
+      alert("Failed to update token status");
+    }
+  };
+
+  const resolveDispute = async (disputeId: string, outcome: string) => {
+    const notes = prompt("Resolution notes (optional):");
+    if (notes === null) return;
+    try {
+      const res = await fetch(`${API}/admin/disputes/${disputeId}/resolve`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ outcome, notes }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        loadDisputes();
+      } else {
+        alert(data.error || "Failed to resolve dispute");
+      }
+    } catch (err) {
+      alert("Failed to resolve dispute");
+    }
+  };
+
   useEffect(() => {
     if (!token) return;
     if (tab === "overview") loadOverview();
     else if (tab === "users") loadUserAssets();
     else if (tab === "escrows") loadEscrows();
+    else if (tab === "tokens") loadTokens();
+    else if (tab === "disputes") loadDisputes();
   }, [tab, token, page]);
 
   const approveMilestone = async (escrowId: string, milestoneIndex: number, force = false) => {
@@ -260,6 +326,7 @@ export default function AdminDashboard() {
     { key: "users" as const, label: "Users & Assets" },
     { key: "escrows" as const, label: "Escrows" },
     { key: "tokens" as const, label: "Tokens" },
+    { key: "disputes" as const, label: "Disputes" },
   ];
 
   return (
@@ -510,15 +577,189 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Tokens tab placeholder */}
+        {/* TOKENS TAB */}
         {tab === "tokens" && (
-          <div className="sd-card p-10 text-center">
-            <p className="text-sm opacity-50">Token management coming soon.</p>
+          <div className="space-y-4">
+            {loading && <p className="text-sm opacity-50">Loading...</p>}
+            {tokens.map((tk) => (
+              <div key={tk.id} className="sd-card p-5">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    {tk.logoUrl ? (
+                      <img src={tk.logoUrl} alt={tk.symbol} className="w-10 h-10 rounded-full" />
+                    ) : (
+                      <div className="w-10 h-10 bg-divider flex items-center justify-center text-sm font-bold">
+                        {tk.symbol?.slice(0, 2)}
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-heading font-extrabold">{tk.symbol}</p>
+                      <p className="text-xs opacity-50">{tk.name}</p>
+                      <p className="text-xs opacity-40 font-mono mt-0.5">{tk.address}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="tag tag-neutral text-xs">{NETWORK_ABBR[tk.network] || tk.network}</span>
+                    <span className={`tag text-xs ${
+                      tk.status === "FEATURED" ? "tag-accent" :
+                      tk.status === "BLACKLISTED" ? "bg-red-600/10 text-red-700 border border-red-600/30" :
+                      "tag-neutral"
+                    }`}>
+                      {tk.status}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-4 mt-4">
+                  <div>
+                    <p className="text-xs opacity-50">Chain ID</p>
+                    <p className="text-sm font-semibold">{tk.chainId}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs opacity-50">Decimals</p>
+                    <p className="text-sm font-semibold">{tk.decimals}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs opacity-50">Has Tax</p>
+                    <p className="text-sm font-semibold">{tk.hasTax ? `Yes (${tk.taxBasisPoints} bps)` : "No"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs opacity-50">Escrows</p>
+                    <p className="text-sm font-semibold">{tk._count?.escrows ?? 0}</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 mt-4">
+                  {tk.status !== "ACTIVE" && (
+                    <button
+                      onClick={() => updateTokenStatus(tk.id, "ACTIVE")}
+                      className="btn btn-secondary text-xs py-1.5 px-3 flex items-center gap-1"
+                    >
+                      <Eye className="w-3 h-3" />
+                      Set Active
+                    </button>
+                  )}
+                  {tk.status !== "FEATURED" && (
+                    <button
+                      onClick={() => updateTokenStatus(tk.id, "FEATURED")}
+                      className="btn btn-primary text-xs py-1.5 px-3 flex items-center gap-1"
+                    >
+                      <Star className="w-3 h-3" />
+                      Feature
+                    </button>
+                  )}
+                  {tk.status !== "BLACKLISTED" && (
+                    <button
+                      onClick={() => updateTokenStatus(tk.id, "BLACKLISTED")}
+                      className="btn btn-secondary text-xs py-1.5 px-3 border-red-600 text-red-700 hover:bg-red-600/5 flex items-center gap-1"
+                    >
+                      <Ban className="w-3 h-3" />
+                      Blacklist
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {!loading && tokens.length === 0 && (
+              <div className="sd-card p-10 text-center">
+                <p className="text-sm opacity-50">No tokens found.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* DISPUTES TAB */}
+        {tab === "disputes" && (
+          <div className="space-y-4">
+            {loading && <p className="text-sm opacity-50">Loading...</p>}
+            {disputes.map((d) => (
+              <div key={d.id} className="sd-card p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-heading font-extrabold">
+                      Dispute on Escrow #{d.escrow?.onChainId ?? d.escrowId?.slice(0, 8)}
+                    </p>
+                    <p className="text-xs opacity-50 mt-1">
+                      {d.escrow?.title} · {NETWORK_ABBR[d.escrow?.network] || d.escrow?.network}
+                    </p>
+                  </div>
+                  <span className={`tag text-xs ${
+                    d.outcome === "PENDING" ? "bg-yellow-600/10 text-yellow-700 border border-yellow-600/30" :
+                    d.outcome === "BUYER_FAVORED" ? "bg-blue-600/10 text-blue-700 border border-blue-600/30" :
+                    d.outcome === "SELLER_FAVORED" ? "bg-green-600/10 text-green-700 border border-green-600/30" :
+                    "tag-accent"
+                  }`}>
+                    {d.outcome}
+                  </span>
+                </div>
+
+                <div className="mt-3 p-3 border-2 border-divider">
+                  <p className="text-xs opacity-50 mb-1">Reason</p>
+                  <p className="text-sm">{d.reason}</p>
+                  {d.evidence && (
+                    <>
+                      <p className="text-xs opacity-50 mb-1 mt-2">Evidence</p>
+                      <p className="text-sm opacity-80">{d.evidence}</p>
+                    </>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 mt-4">
+                  <div>
+                    <p className="text-xs opacity-50">Initiator</p>
+                    <p className="text-xs font-mono">{d.initiator?.walletAddress?.slice(0, 10)}...</p>
+                  </div>
+                  <div>
+                    <p className="text-xs opacity-50">Milestone</p>
+                    <p className="text-sm font-semibold">{d.milestone ? `#${d.milestone.index + 1}: ${d.milestone.description}` : "All"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs opacity-50">Filed</p>
+                    <p className="text-sm">{new Date(d.createdAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
+
+                {d.outcome === "PENDING" && (
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={() => resolveDispute(d.id, "BUYER_FAVORED")}
+                      className="btn btn-secondary text-xs py-1.5 px-3"
+                    >
+                      Favor Buyer
+                    </button>
+                    <button
+                      onClick={() => resolveDispute(d.id, "SELLER_FAVORED")}
+                      className="btn btn-secondary text-xs py-1.5 px-3"
+                    >
+                      Favor Seller
+                    </button>
+                    <button
+                      onClick={() => resolveDispute(d.id, "SPLIT")}
+                      className="btn btn-primary text-xs py-1.5 px-3"
+                    >
+                      Split
+                    </button>
+                  </div>
+                )}
+
+                {d.resolvedAt && (
+                  <p className="text-xs opacity-40 mt-3">
+                    Resolved {new Date(d.resolvedAt).toLocaleString()}
+                    {d.resolver ? ` by ${d.resolver.walletAddress?.slice(0, 10)}...` : ""}
+                  </p>
+                )}
+              </div>
+            ))}
+            {!loading && disputes.length === 0 && (
+              <div className="sd-card p-10 text-center">
+                <p className="text-sm opacity-50">No disputes found.</p>
+              </div>
+            )}
           </div>
         )}
 
         {/* Pagination */}
-        {(tab === "users" || tab === "escrows") && !selectedUser && !selectedEscrow && (
+        {(tab === "users" || tab === "escrows" || tab === "tokens" || tab === "disputes") && !selectedUser && !selectedEscrow && (
           <div className="flex justify-center gap-2 mt-6">
             <button
               onClick={() => setPage(Math.max(1, page - 1))}

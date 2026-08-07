@@ -528,6 +528,148 @@ router.patch("/escrows/:id/state", userAuth, async (req: AuthRequest, res: Respo
 });
 
 // ══════════════════════════════════════════════════════════════
+//  MILESTONE ACTIONS (USER-SIDE)
+// ══════════════════════════════════════════════════════════════
+
+router.post("/escrows/:id/milestones/:milestoneIndex/deliver", userAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const escrow: any = await prisma.escrow.findUnique({
+      where: { id: req.params.id as string },
+      include: { milestones: true },
+    });
+    if (!escrow) { res.status(404).json({ error: "Escrow not found" }); return; }
+    if (escrow.sellerId !== req.userId) { res.status(403).json({ error: "Only the seller can mark delivery" }); return; }
+    if (!["FUNDED", "ACTIVE"].includes(escrow.state)) { res.status(400).json({ error: `Cannot deliver in state: ${escrow.state}` }); return; }
+
+    const milestone = escrow.milestones.find((m: any) => m.index === parseInt(req.params.milestoneIndex as string));
+    if (!milestone) { res.status(404).json({ error: "Milestone not found" }); return; }
+    if (milestone.released) { res.status(400).json({ error: "Milestone already released" }); return; }
+
+    await prisma.milestone.update({
+      where: { id: milestone.id },
+      data: { sellerDelivered: true },
+    });
+
+    if (escrow.state === "FUNDED") {
+      await prisma.escrow.update({ where: { id: escrow.id }, data: { state: "ACTIVE" } });
+    }
+
+    res.json({ success: true, milestoneIndex: milestone.index });
+  } catch (err: any) {
+    console.error("[DELIVER MILESTONE]", err);
+    res.status(500).json({ error: "Failed to mark milestone as delivered" });
+  }
+});
+
+router.post("/escrows/:id/milestones/:milestoneIndex/approve", userAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const escrow: any = await prisma.escrow.findUnique({
+      where: { id: req.params.id as string },
+      include: { milestones: true },
+    });
+    if (!escrow) { res.status(404).json({ error: "Escrow not found" }); return; }
+    if (escrow.buyerId !== req.userId) { res.status(403).json({ error: "Only the buyer can approve milestones" }); return; }
+    if (!["FUNDED", "ACTIVE"].includes(escrow.state)) { res.status(400).json({ error: `Cannot approve in state: ${escrow.state}` }); return; }
+
+    const milestone = escrow.milestones.find((m: any) => m.index === parseInt(req.params.milestoneIndex as string));
+    if (!milestone) { res.status(404).json({ error: "Milestone not found" }); return; }
+    if (milestone.released) { res.status(400).json({ error: "Milestone already released" }); return; }
+
+    await prisma.milestone.update({
+      where: { id: milestone.id },
+      data: { buyerApproved: true },
+    });
+
+    res.json({ success: true, milestoneIndex: milestone.index });
+  } catch (err: any) {
+    console.error("[APPROVE MILESTONE]", err);
+    res.status(500).json({ error: "Failed to approve milestone" });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+//  DISPUTE MANAGEMENT
+// ══════════════════════════════════════════════════════════════
+
+router.post("/escrows/:id/disputes", userAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { reason, evidence, milestoneIndex } = req.body;
+    if (!reason) { res.status(400).json({ error: "Reason is required" }); return; }
+
+    const escrow: any = await prisma.escrow.findUnique({
+      where: { id: req.params.id as string },
+      include: { milestones: true, dispuInits: true },
+    });
+    if (!escrow) { res.status(404).json({ error: "Escrow not found" }); return; }
+
+    const isParticipant = escrow.buyerId === req.userId || escrow.sellerId === req.userId;
+    if (!isParticipant) { res.status(403).json({ error: "Not a participant" }); return; }
+
+    if (!["FUNDED", "ACTIVE"].includes(escrow.state)) {
+      res.status(400).json({ error: `Cannot dispute in state: ${escrow.state}` });
+      return;
+    }
+
+    const pendingDisputes = escrow.dispuInits.filter((d: any) => d.outcome === "PENDING");
+    if (pendingDisputes.length > 0) {
+      res.status(400).json({ error: "There is already a pending dispute on this escrow" });
+      return;
+    }
+
+    let milestoneId: string | undefined;
+    if (milestoneIndex !== undefined) {
+      const milestone = escrow.milestones.find((m: any) => m.index === milestoneIndex);
+      if (!milestone) { res.status(404).json({ error: "Milestone not found" }); return; }
+      milestoneId = milestone.id;
+    }
+
+    const dispute = await prisma.dispute.create({
+      data: {
+        escrowId: escrow.id,
+        milestoneId,
+        initiatorId: req.userId!,
+        reason,
+        evidence,
+      },
+    });
+
+    await prisma.escrow.update({
+      where: { id: escrow.id },
+      data: { state: "DISPUTED" },
+    });
+
+    res.status(201).json(dispute);
+  } catch (err: any) {
+    console.error("[CREATE DISPUTE]", err);
+    res.status(500).json({ error: "Failed to create dispute" });
+  }
+});
+
+router.get("/escrows/:id/disputes", userAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const escrow = await prisma.escrow.findUnique({ where: { id: req.params.id as string } });
+    if (!escrow) { res.status(404).json({ error: "Escrow not found" }); return; }
+
+    const isParticipant = escrow.buyerId === req.userId || escrow.sellerId === req.userId || escrow.arbiterId === req.userId;
+    if (!isParticipant) { res.status(403).json({ error: "Not a participant" }); return; }
+
+    const disputes = await prisma.dispute.findMany({
+      where: { escrowId: escrow.id },
+      include: {
+        initiator: { select: { id: true, walletAddress: true, displayName: true } },
+        resolver: { select: { id: true, walletAddress: true, displayName: true } },
+        milestone: { select: { id: true, index: true, description: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.json(disputes);
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to fetch disputes" });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 //  TOKEN LISTING
 // ══════════════════════════════════════════════════════════════
 
