@@ -53,6 +53,7 @@ async function main() {
     { address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", chainId: 1, symbol: "WETH", name: "Wrapped Ether", decimals: 18, coingeckoId: "weth" },
     { address: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", chainId: 42161, symbol: "USDC", name: "USD Coin (Arbitrum)", decimals: 6, coingeckoId: "usd-coin" },
     { address: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", chainId: 42161, symbol: "USDT", name: "Tether USD (Arbitrum)", decimals: 6, coingeckoId: "tether" },
+    { address: "0x55d398326f99059fF775485246999027B3197955", chainId: 56, symbol: "USDT", name: "Binance-Peg USDT (BNB Smart Chain)", decimals: 18, coingeckoId: "tether" },
   ];
 
   for (const t of tokens) {

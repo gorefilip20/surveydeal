@@ -9,6 +9,8 @@
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
     "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
     "deploy:arbitrum-sepolia": "hardhat run scripts/deploy.js --network arbitrumSepolia",
+    "deploy:bsc-testnet": "hardhat run scripts/deploy.js --network bscTestnet",
+    "deploy:bsc-mainnet": "hardhat run scripts/deploy.js --network bscMainnet",
     "deploy:mainnet": "hardhat run scripts/deploy.js --network mainnet",
     "deploy:arbitrum": "hardhat run scripts/deploy.js --network arbitrum",
     "node": "hardhat node",

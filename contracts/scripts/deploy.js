@@ -19,19 +19,25 @@ async function main() {
   //  DEPLOYMENT PARAMETERS
   // ──────────────────────────────────────────────
 
-  const ADMIN_ADDRESS = process.env.ADMIN_ADDRESS || deployerAddress;
-  const FEE_RECIPIENT = process.env.FEE_RECIPIENT || deployerAddress;
-  const FEE_BASIS_POINTS = parseInt(process.env.FEE_BASIS_POINTS || "0", 10);
-  const MAX_FEE_ABSOLUTE = hre.ethers.parseUnits(
-    process.env.MAX_FEE_ABSOLUTE || "50",
-    6
-  );
+  const isLocal = hre.network.name === "hardhat" || hre.network.name === "localhost";
+  const ADMIN_ADDRESS = process.env.ADMIN_ADDRESS;
+  const FEE_RECIPIENT = process.env.FEE_RECIPIENT;
+  const FEE_BASIS_POINTS = Number(process.env.FEE_BASIS_POINTS);
+  const TOKEN_DECIMALS = Number(process.env.TOKEN_DECIMALS || "6");
+  const MAX_FEE_ABSOLUTE = process.env.MAX_FEE_ABSOLUTE;
+  if (!isLocal && (!ADMIN_ADDRESS || !FEE_RECIPIENT || !Number.isFinite(FEE_BASIS_POINTS) || !MAX_FEE_ABSOLUTE)) {
+    throw new Error("Non-local deployment requires ADMIN_ADDRESS, FEE_RECIPIENT, FEE_BASIS_POINTS, and MAX_FEE_ABSOLUTE");
+  }
+  const adminAddress = ADMIN_ADDRESS || deployerAddress;
+  const feeRecipient = FEE_RECIPIENT || deployerAddress;
+  const feeBasisPoints = Number.isFinite(FEE_BASIS_POINTS) ? FEE_BASIS_POINTS : 0;
+  const maxFeeAbsolute = hre.ethers.parseUnits(MAX_FEE_ABSOLUTE || "50", TOKEN_DECIMALS);
 
   console.log("Configuration:");
-  console.log("  Admin          :", ADMIN_ADDRESS);
-  console.log("  Fee recipient  :", FEE_RECIPIENT);
-  console.log("  Fee rate       :", FEE_BASIS_POINTS, "bps (", (FEE_BASIS_POINTS / 100).toFixed(2) + "% )");
-  console.log("  Max fee cap    :", hre.ethers.formatUnits(MAX_FEE_ABSOLUTE, 6), "(token units, 6 decimals)");
+  console.log("  Admin          :", adminAddress);
+  console.log("  Fee recipient  :", feeRecipient);
+  console.log("  Fee rate       :", feeBasisPoints, "bps (", (feeBasisPoints / 100).toFixed(2) + "% )");
+  console.log("  Max fee cap    :", hre.ethers.formatUnits(maxFeeAbsolute, TOKEN_DECIMALS), `(token units, ${TOKEN_DECIMALS} decimals)`);
   console.log("");
 
   // ──────────────────────────────────────────────
@@ -42,10 +48,10 @@ async function main() {
 
   const SurveydealEscrow = await hre.ethers.getContractFactory("SurveydealEscrow");
   const escrow = await SurveydealEscrow.deploy(
-    ADMIN_ADDRESS,
-    FEE_RECIPIENT,
-    FEE_BASIS_POINTS,
-    MAX_FEE_ABSOLUTE
+    adminAddress,
+    feeRecipient,
+    feeBasisPoints,
+    maxFeeAbsolute
   );
 
   await escrow.waitForDeployment();
@@ -134,10 +140,10 @@ async function main() {
       await hre.run("verify:verify", {
         address: contractAddress,
         constructorArguments: [
-          ADMIN_ADDRESS,
-          FEE_RECIPIENT,
-          FEE_BASIS_POINTS,
-          MAX_FEE_ABSOLUTE,
+          adminAddress,
+          feeRecipient,
+          feeBasisPoints,
+          maxFeeAbsolute,
         ],
       });
       console.log("Contract verified on block explorer.\n");
@@ -161,10 +167,10 @@ async function main() {
   console.log("");
   console.log("  Contract Address  :", contractAddress);
   console.log("  Network           :", hre.network.name);
-  console.log("  Admin             :", ADMIN_ADDRESS);
-  console.log("  Fee Recipient     :", FEE_RECIPIENT);
-  console.log("  Fee Rate          :", FEE_BASIS_POINTS, "bps");
-  console.log("  Max Fee Cap       :", MAX_FEE_ABSOLUTE.toString());
+  console.log("  Admin             :", adminAddress);
+  console.log("  Fee Recipient     :", feeRecipient);
+  console.log("  Fee Rate          :", feeBasisPoints, "bps");
+  console.log("  Max Fee Cap       :", maxFeeAbsolute.toString());
   if (additionalArbiters.length > 0) {
     console.log("  Extra Arbiters    :", additionalArbiters.join(", "));
   }
