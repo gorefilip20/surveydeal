@@ -192,7 +192,7 @@ export async function startBlockchainListener(): Promise<void> {
   isRunning = true;
   console.log("[MULTI-CHAIN] Starting multi-chain deposit listener...");
   console.log(`[MULTI-CHAIN] Monitoring chains: ${Object.keys(CHAIN_RPC_URLS).join(", ")}`);
-  console.log(`[MULTI-CHAIN] Poll interval: ${poll_INTERVAL / 1000}s`);
+  console.log(`[MULTI-CHAIN] Poll interval: ${POLL_INTERVAL / 1000}s`);
 
   // Start the listener loop (non-blocking)
   listenerLoop().catch((err) => {
@@ -214,7 +214,8 @@ export async function verifyDepositTransaction(
   txHash: string,
   chainId: number,
   expectedRecipient: string,
-  expectedAmount: string
+  expectedAmount: string,
+  expectedTokenAddress?: string
 ): Promise<{
   verified: boolean;
   amount?: string;
@@ -228,6 +229,11 @@ export async function verifyDepositTransaction(
 
   try {
     const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const network = await provider.getNetwork();
+    if (Number(network.chainId) !== chainId) {
+      return { verified: false, error: "RPC chain does not match escrow chain" };
+    }
+
     const tx = await provider.getTransaction(txHash);
 
     if (!tx) {
@@ -242,13 +248,18 @@ export async function verifyDepositTransaction(
     // Parse ERC20 Transfer events
     const transferTopic = ethers.id("Transfer(address,address,uint256)");
     const transfers = receipt.logs.filter(
-      (log) => log.topics[0] === transferTopic
+      (log) => log.topics[0] === transferTopic &&
+        (!expectedTokenAddress || log.address.toLowerCase() === expectedTokenAddress.toLowerCase())
     );
 
     for (const transfer of transfers) {
+      if (!transfer.topics[2]) continue;
       const to = ethers.getAddress("0x" + transfer.topics[2].slice(26));
       if (to.toLowerCase() === expectedRecipient.toLowerCase()) {
         const amount = BigInt(transfer.data);
+        if (amount !== BigInt(expectedAmount)) {
+          return { verified: false, error: "Transfer amount does not match escrow amount" };
+        }
         return {
           verified: true,
           amount: amount.toString(),
@@ -258,7 +269,10 @@ export async function verifyDepositTransaction(
     }
 
     // Check native ETH/BNB transfer
-    if (tx.to?.toLowerCase() === expectedRecipient.toLowerCase()) {
+    if (!expectedTokenAddress && tx.to?.toLowerCase() === expectedRecipient.toLowerCase()) {
+      if (tx.value !== BigInt(expectedAmount)) {
+        return { verified: false, error: "Native transfer amount does not match escrow amount" };
+      }
       return {
         verified: true,
         amount: tx.value.toString(),
@@ -281,6 +295,12 @@ export async function confirmDeposit(
   txHash: string,
   amount: string
 ): Promise<void> {
+  const escrow = await prisma.escrow.findUnique({
+    where: { id: escrowId },
+    select: { chainId: true },
+  });
+  if (!escrow) throw new Error("Escrow not found");
+
   await prisma.escrow.update({
     where: { id: escrowId },
     data: {
@@ -299,7 +319,7 @@ export async function confirmDeposit(
       fromAddress: "EXTERNAL",
       toAddress: "ESCROW",
       amount,
-      chainId: 0,
+      chainId: escrow.chainId,
       status: "CONFIRMED",
     },
   });

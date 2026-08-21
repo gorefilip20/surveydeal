@@ -24,7 +24,7 @@ interface AuthRequest extends Request {
   userWallet?: string;
 }
 
-function userAuth(req: AuthRequest, res: Response, next: Function) {
+async function userAuth(req: AuthRequest, res: Response, next: Function) {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     res.status(401).json({ error: "Missing authorization token" });
@@ -35,8 +35,20 @@ function userAuth(req: AuthRequest, res: Response, next: Function) {
       sub: string;
       wallet: string;
     };
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { walletAddress: true, isFrozen: true },
+    });
+    if (!user || user.walletAddress !== payload.wallet?.toLowerCase()) {
+      res.status(401).json({ error: "Invalid authentication subject" });
+      return;
+    }
+    if (user.isFrozen) {
+      res.status(403).json({ error: "Account is frozen" });
+      return;
+    }
     req.userId = payload.sub;
-    req.userWallet = payload.wallet;
+    req.userWallet = user.walletAddress;
     next();
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });
@@ -639,7 +651,8 @@ router.post("/escrows/:id/verify-deposit", userAuth, async (req: AuthRequest, re
       txHash,
       escrow.chainId,
       escrow.depositWalletAddr || "",
-      escrow.totalAmount
+      escrow.totalAmount,
+      escrow.token.address
     );
 
     if (!verification.verified) {

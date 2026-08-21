@@ -21,7 +21,7 @@ interface AuthRequest extends Request {
   adminWallet?: string;
 }
 
-function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     res.status(401).json({ error: "Missing authorization token" });
@@ -33,12 +33,20 @@ function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
       wallet: string;
       isAdmin: boolean;
     };
-    if (!payload.isAdmin) {
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { walletAddress: true, isAdmin: true, isFrozen: true },
+    });
+    if (!user || !payload.isAdmin || !user.isAdmin || user.walletAddress !== payload.wallet?.toLowerCase()) {
       res.status(403).json({ error: "Admin access required" });
       return;
     }
-    req.adminId = payload.sub;
-    req.adminWallet = payload.wallet;
+    if (user.isFrozen) {
+      res.status(403).json({ error: "Admin account is frozen" });
+      return;
+    }
+    req.adminId = user.id;
+    req.adminWallet = user.walletAddress;
     next();
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });
@@ -49,13 +57,17 @@ function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
 //  ADMIN AUTH ENDPOINTS
 // ══════════════════════════════════════════════════════════════
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@surveydeal.io";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "SurveyDeal@2024";
-const ADMIN_WALLET = "0xf39Fd6e51aad88F6F4ce6aB8827279cFfFb92266";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const ADMIN_WALLET = process.env.ADMIN_WALLET?.toLowerCase();
 
 router.post("/auth/simple-login", async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
+    if (!ADMIN_EMAIL || !ADMIN_PASSWORD || !ADMIN_WALLET) {
+      res.status(503).json({ error: "Admin password login is not configured" });
+      return;
+    }
     if (!email || !password) {
       res.status(400).json({ error: "Email and password are required" });
       return;
@@ -410,7 +422,8 @@ router.post("/escrows/:id/approve-milestone/:milestoneIndex", authMiddleware, as
       return;
     }
 
-    const milestone = escrow.milestones.find((m) => m.index === milestoneIndex);
+        const milestone = escrow.milestones.find((m) => m.index === milestoneIndex);
+
     if (!milestone) {
       res.status(404).json({ error: "Milestone not found" });
       return;

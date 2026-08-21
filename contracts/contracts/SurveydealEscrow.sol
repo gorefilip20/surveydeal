@@ -68,6 +68,8 @@ contract SurveydealEscrow is AccessControl, ReentrancyGuard, Pausable {
     mapping(uint256 => mapping(uint256 => Milestone)) public milestones;
     mapping(address => bool) public blacklistedTokens;
     mapping(address => bool) public featuredTokens;
+    mapping(uint256 => mapping(uint256 => uint256)) public disputeResolutionBuyerBasisPoints;
+    mapping(uint256 => mapping(uint256 => address)) public disputeResolutionProposer;
 
     event EscrowCreated(
         uint256 indexed escrowId,
@@ -88,6 +90,12 @@ contract SurveydealEscrow is AccessControl, ReentrancyGuard, Pausable {
         uint256 milestoneIndex,
         uint256 buyerShare,
         uint256 sellerShare
+    );
+    event DisputeResolutionProposed(
+        uint256 indexed escrowId,
+        uint256 milestoneIndex,
+        address indexed proposer,
+        uint256 buyerBasisPoints
     );
     event EscrowRefunded(uint256 indexed escrowId, uint256 amount);
     event EscrowCompleted(uint256 indexed escrowId);
@@ -113,6 +121,8 @@ contract SurveydealEscrow is AccessControl, ReentrancyGuard, Pausable {
     error NoLockedModeArbiter();
     error CannotSelfEscrow();
     error InsufficientFunding();
+    error ResolutionAlreadyProposed();
+    error ResolutionMustMatch();
 
     modifier onlyBuyer(uint256 escrowId) {
         if (msg.sender != escrows[escrowId].buyer) revert NotBuyer();
@@ -362,15 +372,24 @@ contract SurveydealEscrow is AccessControl, ReentrancyGuard, Pausable {
         if (!m.disputed) revert MilestoneNotDisputed();
         if (m.released) revert MilestoneAlreadyReleased();
 
-        if (e.mode == EscrowMode.Locked) {
-            if (msg.sender != e.buyer && msg.sender != e.seller) revert NotParticipant();
-        } else {
-            if (msg.sender != e.buyer && msg.sender != e.seller && msg.sender != e.arbiter)
-                revert NotParticipant();
-        }
+        if (msg.sender != e.buyer && msg.sender != e.seller) revert NotParticipant();
 
         if (buyerBasisPoints > 10000) revert InvalidAmount();
 
+        address proposer = disputeResolutionProposer[escrowId][milestoneIndex];
+        if (proposer == address(0)) {
+            disputeResolutionProposer[escrowId][milestoneIndex] = msg.sender;
+            disputeResolutionBuyerBasisPoints[escrowId][milestoneIndex] = buyerBasisPoints;
+            emit DisputeResolutionProposed(escrowId, milestoneIndex, msg.sender, buyerBasisPoints);
+            return;
+        }
+        if (proposer == msg.sender) revert ResolutionAlreadyProposed();
+        if (disputeResolutionBuyerBasisPoints[escrowId][milestoneIndex] != buyerBasisPoints) {
+            revert ResolutionMustMatch();
+        }
+
+        delete disputeResolutionProposer[escrowId][milestoneIndex];
+        delete disputeResolutionBuyerBasisPoints[escrowId][milestoneIndex];
         _splitMilestoneFunds(escrowId, milestoneIndex, buyerBasisPoints);
     }
 
@@ -393,6 +412,8 @@ contract SurveydealEscrow is AccessControl, ReentrancyGuard, Pausable {
         if (m.released) revert MilestoneAlreadyReleased();
         if (buyerBasisPoints > 10000) revert InvalidAmount();
 
+        delete disputeResolutionProposer[escrowId][milestoneIndex];
+        delete disputeResolutionBuyerBasisPoints[escrowId][milestoneIndex];
         _splitMilestoneFunds(escrowId, milestoneIndex, buyerBasisPoints);
     }
 
