@@ -8,13 +8,11 @@ import {
   verifyDepositTransaction,
   confirmDeposit,
 } from "../services/blockchainListener";
-import { generateDepositWallet } from "../services/walletGenerator";
-import { processRefund } from "../services/refundService";
 import { authLimiter, depositLimiter } from "../middleware/rateLimiter";
 import { validate } from "../middleware/validate";
 import {
   loginSchema, profileUpdateSchema, createEscrowSchema,
-  escrowStateSchema, depositWalletSchema, verifyDepositSchema,
+  depositWalletSchema, verifyDepositSchema,
   disputeSchema, walletAddSchema, chatRoomCreateSchema, chatMessageSchema,
 } from "../middleware/schemas";
 
@@ -26,15 +24,6 @@ if (!JWT_SECRET) {
 }
 
 const nonceStore = new Map<string, { nonce: string; expires: number }>();
-
-const VALID_TRANSITIONS: Record<string, string[]> = {
-  CREATED: ["FUNDED"],
-  FUNDED: ["ACTIVE", "DISPUTED", "REFUNDED"],
-  ACTIVE: ["COMPLETED", "DISPUTED"],
-  DISPUTED: ["COMPLETED", "REFUNDED"],
-  COMPLETED: [],
-  REFUNDED: [],
-};
 
 // ── Auth Middleware (user-level) ────────────────────────────
 
@@ -511,7 +500,7 @@ router.get("/escrows/:id", userAuth, async (req: AuthRequest, res: Response) => 
   }
 });
 
-router.patch("/escrows/:id/state", userAuth, validate(escrowStateSchema), async (_req: AuthRequest, res: Response) => {
+router.patch("/escrows/:id/state", userAuth, async (_req: AuthRequest, res: Response) => {
   res.status(410).json({ error: "Escrow state is read-only; submit the on-chain transaction and wait for the indexer" });
 });
 
@@ -790,7 +779,11 @@ router.get("/escrows/:id/deposit", userAuth, async (req: AuthRequest, res: Respo
   }
 });
 
-router.post("/escrows/:id/deposit-wallet", userAuth, depositLimiter, validate(depositWalletSchema), async (req: AuthRequest, res: Response) => {
+router.post("/escrows/:id/deposit-wallet", userAuth, depositLimiter, validate(depositWalletSchema), async (_req: AuthRequest, res: Response) => {
+  res.status(410).json({ error: "Custodial deposit wallets are disabled. Fund the verified escrow contract directly from your wallet." });
+});
+
+/* Legacy custodial wallet implementation retained only in git history; it must not run in production.
   try {
     const escrow = await prisma.escrow.findUnique({ where: { id: req.params.id as string } });
     if (!escrow) {
@@ -853,6 +846,8 @@ router.post("/escrows/:id/deposit-wallet", userAuth, depositLimiter, validate(de
     res.status(500).json({ error: "Failed to generate deposit wallet" });
   }
 });
+
+*/
 
 router.post("/escrows/:id/verify-deposit", userAuth, validate(verifyDepositSchema), async (req: AuthRequest, res: Response) => {
   try {
