@@ -70,9 +70,9 @@ async function main() {
   const ARBITER_ROLE = await escrow.ARBITER_ROLE();
   const FEE_MANAGER_ROLE = await escrow.FEE_MANAGER_ROLE();
 
-  const hasAdmin = await escrow.hasRole(DEFAULT_ADMIN_ROLE, ADMIN_ADDRESS);
-  const hasArbiter = await escrow.hasRole(ARBITER_ROLE, ADMIN_ADDRESS);
-  const hasFeeManager = await escrow.hasRole(FEE_MANAGER_ROLE, ADMIN_ADDRESS);
+  const hasAdmin = await escrow.hasRole(DEFAULT_ADMIN_ROLE, adminAddress);
+  const hasArbiter = await escrow.hasRole(ARBITER_ROLE, adminAddress);
+  const hasFeeManager = await escrow.hasRole(FEE_MANAGER_ROLE, adminAddress);
 
   console.log("  DEFAULT_ADMIN_ROLE :", hasAdmin ? "GRANTED" : "MISSING");
   console.log("  ARBITER_ROLE       :", hasArbiter ? "GRANTED" : "MISSING");
