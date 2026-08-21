@@ -65,8 +65,6 @@ enum ChainNetwork {
   POLYGON
   ARBITRUM
   BASE
-  SOLANA
-  TRON
   AVALANCHE
   OPTIMISM
   FANTOM
@@ -93,7 +91,7 @@ model User {
   dispuResolvs      Dispute[]   @relation("DisputeResolver")
   wallets           UserWallet[]
   chatRooms         ChatRoom[]
-  sentChatMessages  ChatMessage[]
+  chatMessages      ChatMessage[]
   adminTransfers    AdminTransfer[]
 
   @@index([walletAddress])
@@ -185,6 +183,7 @@ model Escrow {
   milestones              Milestone[]
   transactions            Transaction[]
   dispuInits              Dispute[]     @relation("DisputeEscrow")
+  chainEvents             ChainEvent[]
   chatRooms               ChatRoom[]
 
   @@index([state])
@@ -280,7 +279,45 @@ model ProtocolConfig {
   updatedAt   DateTime @updatedAt
 }
 
+model IndexerCursor {
+  id              String   @id @default(cuid())
+  chainId         Int
+  contractAddress String
+  lastBlock       Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  @@unique([chainId, contractAddress])
+}
+
+model ChainEvent {
+  id              String           @id @default(cuid())
+  chainId         Int
+  contractAddress String
+  txHash          String
+  logIndex        Int
+  blockNumber     Int
+  eventName       String
+  escrowOnChainId Int?
+  payload         Json
+  status          ChainEventStatus @default(CONFIRMED)
+  blockHash       String?
+  createdAt       DateTime         @default(now())
+  escrow          Escrow?          @relation(fields: [escrowId], references: [id])
+  escrowId        String?
+
+  @@unique([chainId, contractAddress, txHash, logIndex])
+  @@index([chainId, contractAddress, blockNumber])
+  @@index([escrowOnChainId])
+  @@index([escrowId])
+  @@index([status])
+}
+
 // ─── CHAT SYSTEM ────────────────────────────────────
+
+enum ChainEventStatus {
+  CONFIRMED
+  REORGED
+}
 
 enum ChatRoomStatus {
   OPEN

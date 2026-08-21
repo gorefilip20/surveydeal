@@ -22,7 +22,7 @@ const COIN_IDS: Record<string, { id: string; symbol: string; name: string }> = {
   bitcoin: { id: "bitcoin", symbol: "BTC", name: "Bitcoin" },
   binancecoin: { id: "binancecoin", symbol: "BNB", name: "BNB" },
   "matic-network": { id: "matic-network", symbol: "MATIC", name: "Polygon" },
-  solana: { id: "solana", symbol: "SOL", name: "Solana" },
+  "avalanche-2": { id: "avalanche-2", symbol: "AVAX", name: "Avalanche" },
   "usd-coin": { id: "usd-coin", symbol: "USDC", name: "USD Coin" },
   tether: { id: "tether", symbol: "USDT", name: "Tether" },
   dai: { id: "dai", symbol: "DAI", name: "Dai" },
@@ -90,7 +90,7 @@ export default function PriceCalculator({
       WBNB: "binancecoin",
       MATIC: "matic-network",
       WMATIC: "matic-network",
-      SOL: "solana",
+      AVAX: "avalanche-2",
     };
     const cgId = symToCoingecko[tokenSymbol.toUpperCase()];
     if (cgId && prices[cgId]?.usd) return prices[cgId].usd!;
@@ -181,7 +181,7 @@ export default function PriceCalculator({
                   { coin: "bitcoin", sym: "BTC" },
                   { coin: "binancecoin", sym: "BNB" },
                   { coin: "matic-network", sym: "MATIC" },
-                  { coin: "solana", sym: "SOL" },
+                  { coin: "avalanche-2", sym: "AVAX" },
                 ].map(({ coin, sym }) => (
                   <div key={coin} className="p-2 rounded-lg bg-white/[0.02] border border-white/5 text-center">
                     <div className="text-xs text-slate-500 mb-0.5">{sym}</div>

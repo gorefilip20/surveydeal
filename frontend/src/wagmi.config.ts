@@ -4,11 +4,10 @@ import {
   rainbowWallet,
   walletConnectWallet,
   coinbaseWallet,
-  phantomWallet,
   krakenWallet,
 } from "@rainbow-me/rainbowkit/wallets";
 import { createConfig, http } from "wagmi";
-import { hardhat, mainnet, arbitrum, base, bsc, polygon, optimism } from "wagmi/chains";
+import { hardhat, mainnet, arbitrum, base, bsc, polygon, optimism, avalanche, fantom } from "wagmi/chains";
 
 const localHardhat = {
   ...hardhat,
@@ -18,14 +17,16 @@ const localHardhat = {
   },
 };
 
-export const CHAIN_CONFIG: Record<number, { name: string; contractAddress: string; explorerUrl: string; icon: string }> = {
-  [localHardhat.id]: { name: "Local Hardhat", contractAddress: "0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0", explorerUrl: "", icon: "⟠" },
-  [mainnet.id]: { name: "Ethereum", contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ETH || "", explorerUrl: "https://etherscan.io", icon: "⟠" },
-  [bsc.id]: { name: "BNB Chain", contractAddress: process.env.NEXT_PUBLIC_CONTRACT_BSC || "", explorerUrl: "https://bscscan.com", icon: "◆" },
-  [arbitrum.id]: { name: "Arbitrum", contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ARB || "", explorerUrl: "https://arbiscan.io", icon: "🔵" },
-  [base.id]: { name: "Base", contractAddress: process.env.NEXT_PUBLIC_CONTRACT_BASE || "", explorerUrl: "https://basescan.org", icon: "🔷" },
-  [polygon.id]: { name: "Polygon", contractAddress: process.env.NEXT_PUBLIC_CONTRACT_POLYGON || "", explorerUrl: "https://polygonscan.com", icon: "🟣" },
-  [optimism.id]: { name: "Optimism", contractAddress: process.env.NEXT_PUBLIC_CONTRACT_OP || "", explorerUrl: "https://optimistic.etherscan.io", icon: "🔴" },
+export const CHAIN_CONFIG: Record<number, { name: string; explorerUrl: string; icon: string }> = {
+  [localHardhat.id]: { name: "Local Hardhat", explorerUrl: "", icon: "⟠" },
+  [mainnet.id]: { name: "Ethereum", explorerUrl: "https://etherscan.io", icon: "⟠" },
+  [bsc.id]: { name: "BNB Chain", explorerUrl: "https://bscscan.com", icon: "◆" },
+  [arbitrum.id]: { name: "Arbitrum", explorerUrl: "https://arbiscan.io", icon: "🔵" },
+  [base.id]: { name: "Base", explorerUrl: "https://basescan.org", icon: "🔷" },
+  [polygon.id]: { name: "Polygon", explorerUrl: "https://polygonscan.com", icon: "🟣" },
+  [optimism.id]: { name: "Optimism", explorerUrl: "https://optimistic.etherscan.io", icon: "🔴" },
+  [avalanche.id]: { name: "Avalanche", explorerUrl: "https://snowtrace.io", icon: "🔺" },
+  [fantom.id]: { name: "Fantom", explorerUrl: "https://ftmscan.com", icon: "👻" },
 };
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_ID || "04b9e6e5c9184e0ab1ef6c1b6d4ecb29";
@@ -36,7 +37,6 @@ const connectors = connectorsForWallets(
       groupName: "Popular",
       wallets: [
         metaMaskWallet,
-        phantomWallet,
         coinbaseWallet,
         rainbowWallet,
       ],
@@ -55,7 +55,7 @@ const connectors = connectorsForWallets(
   }
 );
 
-const chains = [localHardhat, mainnet, bsc, arbitrum, base, polygon, optimism] as const;
+const chains = [localHardhat, mainnet, bsc, arbitrum, base, polygon, optimism, avalanche, fantom] as const;
 
 export const config = createConfig({
   connectors,
@@ -68,6 +68,8 @@ export const config = createConfig({
     [base.id]: http(),
     [polygon.id]: http(),
     [optimism.id]: http(),
+    [avalanche.id]: http(),
+    [fantom.id]: http(),
   },
   ssr: true,
 });

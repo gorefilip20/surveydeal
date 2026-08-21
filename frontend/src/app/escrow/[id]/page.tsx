@@ -2,48 +2,80 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import dynamic from "next/dynamic";
+import {
+  ChevronLeft,
+  Shield,
+  Copy,
+  Check,
+  RefreshCw,
+  Wallet,
+  QrCode,
+  AlertTriangle,
+  MessageSquare,
+  Flag,
+  Undo2,
+  Send,
+  CheckCircle,
+} from "lucide-react";
+import Nav from "@/components/Nav";
 
-// Dynamically import QRCodeSVG to avoid SSR issues
-const QRCodeSVG = dynamic(() => import("qrcode.react").then((mod) => mod.QRCodeSVG), {
-  ssr: false,
-});
+const QRCodeSVG = dynamic(
+  () => import("qrcode.react").then((mod) => mod.QRCodeSVG),
+  { ssr: false }
+);
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-
-const STATE_CONFIG: Record<string, { color: string; bg: string; icon: string; label: string }> = {
-  CREATED: { color: "text-gray-400", bg: "bg-gray-500/20", icon: "📝", label: "Created" },
-  FUNDED: { color: "text-yellow-400", bg: "bg-yellow-500/20", icon: "💰", label: "Funded" },
-  ACTIVE: { color: "text-blue-400", bg: "bg-blue-500/20", icon: "🔄", label: "Active" },
-  COMPLETED: { color: "text-green-400", bg: "bg-green-500/20", icon: "✅", label: "Completed" },
-  DISPUTED: { color: "text-red-400", bg: "bg-red-500/20", icon: "⚠️", label: "Disputed" },
-  REFUNDED: { color: "text-orange-400", bg: "bg-orange-500/20", icon: "↩️", label: "Refunded" },
-};
-
-const NETWORK_ICONS: Record<string, string> = {
-  ETHEREUM: "🔷", BNB_CHAIN: "🟡", POLYGON: "🟣", ARBITRUM: "🔵",
-  BASE: "🔷", AVALANCHE: "🔺", OPTIMISM: "🔴", FANTOM: "👻",
-  SOLANA: "☀️", TRON: "🔴",
-};
 
 export default function EscrowDetailPage() {
   const params = useParams();
   const escrowId = params?.id as string;
   const [token, setToken] = useState("");
   const [escrow, setEscrow] = useState<any>(null);
+  const [userId, setUserId] = useState("");
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState<"success" | "error">("success");
+  const [showDispute, setShowDispute] = useState(false);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [disputeEvidence, setDisputeEvidence] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [chatRoomId, setChatRoomId] = useState("");
+  const [chatInput, setChatInput] = useState("");
+  const [showVerifyInput, setShowVerifyInput] = useState(false);
+  const [verifyTxHash, setVerifyTxHash] = useState("");
+  const [confirmAction, setConfirmAction] = useState<{ msg: string; fn: () => void } | null>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem("user_token") || localStorage.getItem("admin_token");
-    if (stored) setToken(stored);
+    const stored =
+      localStorage.getItem("user_token") ||
+      localStorage.getItem("admin_token");
+    if (stored) {
+      setToken(stored);
+      fetch(`${API}/auth/me`, { headers: { Authorization: `Bearer ${stored}` } })
+        .then((r) => r.json())
+        .then((d) => { if (d.id) setUserId(d.id); })
+        .catch(() => {});
+    }
   }, []);
+
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+
+  const showMsg = (text: string, type: "success" | "error" = "success") => {
+    setMessage(text);
+    setMessageType(type);
+  };
 
   const loadEscrow = useCallback(async () => {
     if (!token || !escrowId) return;
     try {
-      // Try admin endpoint first, then user endpoint
       let res = await fetch(`${API}/admin/escrows/${escrowId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -64,296 +96,570 @@ export default function EscrowDetailPage() {
     loadEscrow();
   }, [loadEscrow]);
 
-  // Admin approve milestone
-  const approveMilestone = async (milestoneIndex: number, force = false) => {
+  const generateDepositWallet = async () => {
     setActionLoading(true);
-    setMessage("");
     try {
-      const res = await fetch(`${API}/admin/escrows/${escrowId}/approve-milestone/${milestoneIndex}`, {
+      const res = await fetch(`${API}/escrows/${escrowId}/deposit-wallet`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ force }),
+        headers,
       });
       const data = await res.json();
       if (data.success) {
-        setMessage(`✅ Milestone ${milestoneIndex + 1} approved! TX: ${data.txHash?.slice(0, 16)}...`);
+        showMsg(
+          data.depositWallet?.alreadyGenerated
+            ? "Deposit wallet already generated."
+            : "Deposit wallet generated successfully."
+        );
         loadEscrow();
       } else {
-        setMessage(`❌ ${data.error || "Failed to approve"}`);
+        showMsg(data.error || "Failed to generate deposit wallet", "error");
       }
-    } catch (err) {
-      setMessage("❌ Network error");
+    } catch {
+      showMsg("Network error", "error");
     }
     setActionLoading(false);
   };
 
-  // Admin approve all
-  const approveAll = async () => {
+  const verifyDeposit = async () => {
+    if (!showVerifyInput) {
+      setShowVerifyInput(true);
+      return;
+    }
+    if (!verifyTxHash.trim()) {
+      showMsg("Please enter a transaction hash", "error");
+      return;
+    }
     setActionLoading(true);
-    setMessage("");
     try {
-      const res = await fetch(`${API}/admin/escrows/${escrowId}/approve-all`, {
+      const res = await fetch(`${API}/escrows/${escrowId}/verify-deposit`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
+        body: JSON.stringify({ txHash: verifyTxHash.trim() }),
       });
       const data = await res.json();
       if (data.success) {
-        setMessage(`✅ All milestones approved! TX: ${data.txHash?.slice(0, 16)}...`);
+        showMsg("Deposit verified and confirmed.");
+        setShowVerifyInput(false);
+        setVerifyTxHash("");
         loadEscrow();
       } else {
-        setMessage(`❌ ${data.error}`);
+        showMsg(
+          data.error || data.message || "Deposit not found or not confirmed yet",
+          "error"
+        );
       }
-    } catch (err) {
-      setMessage("❌ Network error");
+    } catch {
+      showMsg("Network error", "error");
     }
     setActionLoading(false);
+  };
+
+  const deliverMilestone = async (milestoneIndex: number) => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(
+        `${API}/escrows/${escrowId}/milestones/${milestoneIndex}/deliver`,
+        { method: "POST", headers }
+      );
+      const data = await res.json();
+      if (data.success) {
+        showMsg(`Milestone ${milestoneIndex + 1} marked as delivered.`);
+        loadEscrow();
+      } else {
+        showMsg(data.error || "Failed to deliver", "error");
+      }
+    } catch {
+      showMsg("Network error", "error");
+    }
+    setActionLoading(false);
+  };
+
+  const approveMilestone = async (milestoneIndex: number) => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(
+        `${API}/escrows/${escrowId}/milestones/${milestoneIndex}/approve`,
+        { method: "POST", headers }
+      );
+      const data = await res.json();
+      if (data.success) {
+        showMsg(`Milestone ${milestoneIndex + 1} approved.`);
+        loadEscrow();
+      } else {
+        showMsg(data.error || "Failed to approve", "error");
+      }
+    } catch {
+      showMsg("Network error", "error");
+    }
+    setActionLoading(false);
+  };
+
+  const adminApproveMilestone = async (
+    milestoneIndex: number,
+    force = false
+  ) => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(
+        `${API}/admin/escrows/${escrowId}/approve-milestone/${milestoneIndex}`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ force }),
+        }
+      );
+      const data = await res.json();
+      if (data.success) {
+        showMsg(
+          `Milestone ${milestoneIndex + 1} released. TX: ${data.txHash?.slice(0, 16)}...`
+        );
+        loadEscrow();
+      } else {
+        showMsg(data.error || "Failed to approve", "error");
+      }
+    } catch {
+      showMsg("Network error", "error");
+    }
+    setActionLoading(false);
+  };
+
+  const adminApproveAll = async () => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(
+        `${API}/admin/escrows/${escrowId}/approve-all`,
+        { method: "POST", headers }
+      );
+      const data = await res.json();
+      if (data.success) {
+        showMsg("All milestones released.");
+        loadEscrow();
+      } else {
+        showMsg(data.error || "Failed", "error");
+      }
+    } catch {
+      showMsg("Network error", "error");
+    }
+    setActionLoading(false);
+  };
+
+  const createDispute = async () => {
+    if (!disputeReason.trim()) {
+      showMsg("Please enter a reason for the dispute", "error");
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${API}/escrows/${escrowId}/disputes`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          reason: disputeReason,
+          evidence: disputeEvidence || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.id) {
+        showMsg("Dispute filed. The admin team will review it.");
+        setShowDispute(false);
+        setDisputeReason("");
+        setDisputeEvidence("");
+        loadEscrow();
+      } else {
+        showMsg(data.error || "Failed to file dispute", "error");
+      }
+    } catch {
+      showMsg("Network error", "error");
+    }
+    setActionLoading(false);
+  };
+
+  const requestRefund = () => {
+    setConfirmAction({
+      msg: "Are you sure you want to request a refund? This will mark the escrow for review.",
+      fn: async () => {
+        setConfirmAction(null);
+        setActionLoading(true);
+        try {
+          const res = await fetch(`${API}/escrows/${escrowId}/state`, {
+            method: "PATCH",
+            headers,
+            body: JSON.stringify({ state: "REFUNDED" }),
+          });
+          const data = await res.json();
+          if (data.id) {
+            showMsg("Refund requested. The escrow has been marked for refund.");
+            loadEscrow();
+          } else {
+            showMsg(data.error || "Failed to request refund", "error");
+          }
+        } catch {
+          showMsg("Network error", "error");
+        }
+        setActionLoading(false);
+      },
+    });
+  };
+
+  const copyAddress = (addr: string) => {
+    navigator.clipboard.writeText(addr);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const openChat = async () => {
+    setShowChat(true);
+    try {
+      const res = await fetch(`${API}/chat/rooms`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          escrowId,
+          subject: `Support for Escrow #${escrow?.onChainId}`,
+        }),
+      });
+      const data = await res.json();
+      if (data.id) {
+        setChatRoomId(data.id);
+        setChatMessages(data.messages?.reverse() || []);
+      }
+    } catch {
+      showMsg("Failed to open chat", "error");
+    }
+  };
+
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || !chatRoomId) return;
+    try {
+      const res = await fetch(`${API}/chat/rooms/${chatRoomId}/messages`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ content: chatInput }),
+      });
+      const data = await res.json();
+      if (data.id) {
+        setChatMessages([...chatMessages, data]);
+        setChatInput("");
+      }
+    } catch {
+      showMsg("Failed to send message", "error");
+    }
+  };
+
+  const refreshChat = async () => {
+    if (!chatRoomId) return;
+    try {
+      const res = await fetch(`${API}/chat/rooms/${chatRoomId}/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (Array.isArray(data)) setChatMessages(data);
+    } catch {}
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="text-gray-400">Loading escrow...</div>
+      <div className="min-h-screen bg-bg flex items-center justify-center">
+        <p className="text-neutral-500 text-sm">Loading escrow...</p>
       </div>
     );
   }
 
   if (!escrow || escrow.error) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="min-h-screen bg-bg flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-400 text-lg">Escrow not found</p>
-          <a href="/dashboard" className="text-blue-400 hover:text-blue-300 text-sm mt-2 inline-block">
-            ← Back to Dashboard
-          </a>
+          <p className="text-text text-lg font-heading font-extrabold">
+            Escrow not found
+          </p>
+          <Link
+            href="/dashboard"
+            className="btn btn-ghost mt-4 inline-flex"
+          >
+            <ChevronLeft size={16} />
+            Back to Dashboard
+          </Link>
         </div>
       </div>
     );
   }
 
-  const stateConf = STATE_CONFIG[escrow.state] || STATE_CONFIG.CREATED;
-  const releasedMilestones = escrow.milestones?.filter((m: any) => m.released).length || 0;
-  const totalMilestones = escrow.milestones?.length || 0;
+  const isBuyer = escrow.buyerId === userId;
+  const isSeller = escrow.sellerId === userId;
   const isAdmin = !!localStorage.getItem("admin_token");
+  const releasedMilestones =
+    escrow.milestones?.filter((m: any) => m.released).length || 0;
+  const totalMilestones = escrow.milestones?.length || 0;
+  const progressPct =
+    totalMilestones > 0 ? (releasedMilestones / totalMilestones) * 100 : 0;
+  const isActiveOrFunded = ["ACTIVE", "FUNDED"].includes(escrow.state);
+  const isActiveOrDisputed = ["ACTIVE", "DISPUTED"].includes(escrow.state);
+  const canDispute = isActiveOrFunded && (isBuyer || isSeller);
+  const canRefund = ["FUNDED", "DISPUTED"].includes(escrow.state) && isBuyer;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      {/* Header */}
-      <header className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-lg font-bold">
-              SD
-            </div>
-            <div>
-              <h1 className="text-lg font-bold">{escrow.title}</h1>
-              <p className="text-xs text-gray-400">Escrow #{escrow.onChainId} • {escrow.network}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className={`text-sm px-4 py-1.5 rounded-full ${stateConf.bg} ${stateConf.color}`}>
-              {stateConf.icon} {stateConf.label}
-            </span>
-            <a href="/dashboard" className="text-sm text-gray-400 hover:text-white transition">
-              ← Dashboard
-            </a>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-bg text-text">
+      <Nav />
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-        {/* Message */}
+      <div className="max-w-[1120px] mx-auto px-4 sm:px-6 py-8">
         {message && (
-          <div className={`px-4 py-3 rounded-lg mb-6 text-sm ${
-            message.startsWith("✅")
-              ? "bg-green-500/10 border border-green-500/30 text-green-400"
-              : "bg-red-500/10 border border-red-500/30 text-red-400"
-          }`}>
+          <div
+            className={`px-4 py-3 mb-6 text-sm border-2 ${
+              messageType === "error"
+                ? "border-accent bg-accent-100 text-accent-700"
+                : "border-green-600 bg-green-600/5 text-green-700"
+            }`}
+          >
             {message}
+            <button
+              onClick={() => setMessage("")}
+              className="float-right opacity-50 hover:opacity-100"
+            >
+              &times;
+            </button>
+          </div>
+        )}
+        {confirmAction && (
+          <div className="px-4 py-3 mb-6 text-sm border-2 border-yellow-600 bg-yellow-600/5 flex items-center justify-between">
+            <span className="text-yellow-700">{confirmAction.msg}</span>
+            <div className="flex gap-2 flex-shrink-0 ml-4">
+              <button onClick={confirmAction.fn} className="btn btn-primary text-xs px-3 py-1.5">Confirm</button>
+              <button onClick={() => setConfirmAction(null)} className="btn btn-secondary text-xs px-3 py-1.5">Cancel</button>
+            </div>
           </div>
         )}
 
-        {/* Progress Bar */}
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-2">
+            <Link
+              href="/dashboard"
+              className="text-accent text-sm hover:opacity-70 flex items-center gap-1"
+            >
+              <ChevronLeft size={14} />
+              Dashboard
+            </Link>
+            <span className="text-accent text-[11px] font-semibold uppercase tracking-wider">
+              ESCROW #{escrow.onChainId}
+            </span>
+            <span
+              className={`tag ${
+                isActiveOrDisputed ? "tag-accent" : "tag-neutral"
+              }`}
+            >
+              {escrow.state}
+            </span>
+          </div>
+          <h2 className="font-heading font-extrabold text-2xl sm:text-3xl text-text">
+            {escrow.title}
+          </h2>
+          <p className="text-[13px] opacity-50 mt-1">
+            {escrow.network} &middot; {escrow.token?.symbol || "N/A"} &middot;{" "}
+            {escrow.mode === "ARBITER" ? "Arbiter" : "Locked"} Mode
+          </p>
+        </div>
+
+        {/* Progress */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-400">Progress</span>
-            <span className="text-sm text-white">{releasedMilestones}/{totalMilestones} milestones released</span>
+            <span className="text-xs opacity-50">Progress</span>
+            <span className="text-xs opacity-50">
+              {releasedMilestones} of {totalMilestones} milestones released
+            </span>
           </div>
-          <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+          <div className="w-full h-2 bg-neutral-200 overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500"
-              style={{ width: `${totalMilestones > 0 ? (releasedMilestones / totalMilestones) * 100 : 0}%` }}
+              className="h-full bg-accent transition-all duration-500"
+              style={{ width: `${progressPct}%` }}
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
+        {/* 2-Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4">
+          {/* Main */}
+          <div className="space-y-4">
             {/* Parties */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
-              <h3 className="text-lg font-semibold mb-4">Parties</h3>
-              <div className="grid grid-cols-3 gap-4">
+            <div className="border-2 border-divider">
+              <div className="px-5 py-3 border-b-2 border-divider">
+                <h3 className="font-heading font-extrabold text-sm uppercase tracking-wider">
+                  Parties
+                </h3>
+              </div>
+              <div className="grid grid-cols-3 divide-x-2 divide-divider">
                 {[
-                  { label: "Buyer", data: escrow.buyer, role: "buyer" },
-                  { label: "Seller", data: escrow.seller, role: "seller" },
-                  { label: "Arbiter", data: escrow.arbiter, role: "arbiter" },
+                  { label: "Buyer", data: escrow.buyer, note: "Payer", isYou: isBuyer },
+                  { label: "Seller", data: escrow.seller, note: "Recipient", isYou: isSeller },
+                  { label: "Arbiter", data: escrow.arbiter, note: "Mediator", isYou: false },
                 ].map((p) => (
-                  <div key={p.label} className="bg-gray-800/50 rounded-lg p-4">
-                    <p className="text-xs text-gray-500 mb-1">{p.label}</p>
+                  <div key={p.label} className="px-5 py-4">
+                    <p className="text-[11px] uppercase tracking-wider opacity-50 mb-2">
+                      {p.label}
+                      {p.isYou && (
+                        <span className="ml-1 text-accent">(You)</span>
+                      )}
+                    </p>
                     {p.data ? (
                       <>
-                        <p className="text-sm text-white font-mono">
+                        <p className="text-sm font-mono text-text break-all">
                           {p.data.walletAddress?.slice(0, 8)}...
+                          {p.data.walletAddress?.slice(-4)}
                         </p>
-                        <p className="text-xs text-gray-400">{p.data.displayName || "Unnamed"}</p>
+                        <p className="text-[11px] opacity-50 mt-1">
+                          {p.data.displayName || p.note}
+                        </p>
                       </>
                     ) : (
-                      <p className="text-sm text-gray-500">Not set</p>
+                      <p className="text-sm opacity-40">Not set</p>
                     )}
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Token Info */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
-              <h3 className="text-lg font-semibold mb-4">Token Details</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div>
-                  <p className="text-xs text-gray-500">Token</p>
-                  <p className="text-sm font-medium text-white">{escrow.token?.symbol || "N/A"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Network</p>
-                  <p className="text-sm font-medium text-white">
-                    {NETWORK_ICONS[escrow.network] || ""} {escrow.network}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">CA</p>
-                  <p className="text-xs text-gray-300 font-mono">
-                    {escrow.token?.address?.slice(0, 8)}...
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Mode</p>
-                  <p className="text-sm font-medium text-white">
-                    {escrow.mode === "ARBITER" ? "👨‍⚖️ Arbiter" : "🔒 Locked"}
-                  </p>
-                </div>
-              </div>
-            </div>
-
             {/* Amounts */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
-              <h3 className="text-lg font-semibold mb-4">Amounts</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {[
-                  { label: "Total Amount", value: escrow.totalAmount, color: "text-white" },
-                  { label: "Funded", value: escrow.fundedAmount, color: "text-yellow-400" },
-                  { label: "Released", value: escrow.releasedAmount, color: "text-green-400" },
-                  { label: "Protocol Fees", value: escrow.protocolFeeTotal, color: "text-purple-400" },
-                ].map((a) => (
-                  <div key={a.label} className="bg-gray-800/50 rounded-lg p-3">
-                    <p className="text-xs text-gray-500">{a.label}</p>
-                    <p className={`text-sm font-medium ${a.color}`}>{a.value} {escrow.token?.symbol}</p>
-                  </div>
-                ))}
-              </div>
+            <div className="bg-divider grid grid-cols-2 sm:grid-cols-4 gap-[2px]">
+              {[
+                { label: "Total", value: escrow.totalAmount, accent: false },
+                { label: "Funded", value: escrow.fundedAmount, accent: false },
+                {
+                  label: "Released",
+                  value: escrow.releasedAmount,
+                  accent: true,
+                },
+                {
+                  label: "Fees",
+                  value: escrow.protocolFeeTotal,
+                  accent: false,
+                },
+              ].map((a) => (
+                <div key={a.label} className="bg-bg px-5 py-4">
+                  <p className="text-[11px] uppercase tracking-wider opacity-50">
+                    {a.label}
+                  </p>
+                  <p
+                    className={`text-[18px] font-heading font-extrabold ${
+                      a.accent ? "text-accent" : "text-text"
+                    }`}
+                  >
+                    {a.value ?? "0"}
+                  </p>
+                  <p className="text-[11px] opacity-50">
+                    {escrow.token?.symbol || "TOKEN"}
+                  </p>
+                </div>
+              ))}
             </div>
 
             {/* Milestones */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Milestones</h3>
-                {(escrow.state === "ACTIVE" || escrow.state === "DISPUTED") && isAdmin && (
+            <div className="border-2 border-divider">
+              <div className="px-5 py-3 border-b-2 border-divider flex items-center justify-between">
+                <h3 className="font-heading font-extrabold text-sm uppercase tracking-wider">
+                  Milestones
+                </h3>
+                {isActiveOrDisputed && isAdmin && (
                   <button
-                    onClick={approveAll}
+                    onClick={adminApproveAll}
                     disabled={actionLoading}
-                    className="text-sm bg-green-600 hover:bg-green-700 disabled:bg-gray-700 text-white px-4 py-2 rounded-lg transition"
+                    className="btn btn-primary text-xs px-3 py-1.5 disabled:opacity-40"
                   >
-                    {actionLoading ? "Processing..." : "✅ Approve All"}
+                    {actionLoading ? "Processing..." : "Release All"}
                   </button>
                 )}
               </div>
-              <div className="space-y-3">
-                {escrow.milestones?.map((m: any) => (
+              <div>
+                {escrow.milestones?.map((m: any, idx: number) => (
                   <div
                     key={m.id}
-                    className={`flex items-center justify-between p-4 rounded-xl border transition ${
-                      m.released
-                        ? "bg-green-500/5 border-green-500/30"
-                        : "bg-gray-800/50 border-gray-700"
+                    className={`flex items-center justify-between px-5 py-4 ${
+                      idx < (escrow.milestones?.length || 0) - 1
+                        ? "border-b border-divider"
+                        : ""
                     }`}
                   >
                     <div className="flex items-center gap-4">
-                      <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
-                          m.released
-                            ? "bg-green-600 text-white"
-                            : "bg-gray-700 text-gray-300"
-                        }`}
-                      >
-                        {m.released ? "✓" : m.index + 1}
-                      </div>
+                      {m.released ? (
+                        <div className="w-8 h-8 bg-accent flex items-center justify-center flex-shrink-0">
+                          <Check size={16} className="text-white" />
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 bg-neutral-300 flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm font-heading font-extrabold text-text">
+                            {m.index + 1}
+                          </span>
+                        </div>
+                      )}
                       <div>
-                        <p className="text-sm font-medium text-white">{m.description}</p>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-sm font-semibold text-text">
+                          {m.description}
+                        </p>
+                        <p className="text-xs opacity-50">
                           {m.amount} {escrow.token?.symbol}
                         </p>
                       </div>
                     </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+                      {m.released && (
+                        <span className="tag bg-accent text-white">
+                          RELEASED
+                        </span>
+                      )}
+                      {m.sellerDelivered && !m.released && (
+                        <span className="tag tag-neutral">DELIVERED</span>
+                      )}
+                      {m.buyerApproved && !m.released && (
+                        <span className="tag tag-neutral">APPROVED</span>
+                      )}
 
-                    <div className="flex items-center gap-2">
-                      {/* Status badges */}
-                      <div className="flex gap-1.5 flex-wrap justify-end">
-                        {m.sellerDelivered && (
-                          <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
-                            Delivered
-                          </span>
-                        )}
-                        {m.buyerApproved && (
-                          <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">
-                            Approved
-                          </span>
-                        )}
-                        {m.adminApproved && (
-                          <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-full">
-                            Admin
-                          </span>
-                        )}
-                        {m.disputed && (
-                          <span className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full">
-                            Disputed
-                          </span>
-                        )}
-                        {m.released && (
-                          <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">
-                            Released ✓
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Admin action buttons */}
-                      {!m.released && isAdmin && (escrow.state === "ACTIVE" || escrow.state === "DISPUTED") && (
-                        <div className="flex gap-1 ml-2">
+                      {/* Seller: Mark as delivered */}
+                      {!m.released &&
+                        !m.sellerDelivered &&
+                        isSeller &&
+                        isActiveOrFunded && (
                           <button
-                            onClick={() => approveMilestone(m.index, false)}
+                            onClick={() => deliverMilestone(m.index)}
                             disabled={actionLoading}
-                            className="text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white px-3 py-1.5 rounded-lg transition"
+                            className="btn btn-secondary text-xs px-3 py-1.5 disabled:opacity-40"
                           >
+                            <Send size={12} />
+                            Deliver
+                          </button>
+                        )}
+
+                      {/* Buyer: Approve delivery */}
+                      {!m.released &&
+                        m.sellerDelivered &&
+                        !m.buyerApproved &&
+                        isBuyer &&
+                        isActiveOrFunded && (
+                          <button
+                            onClick={() => approveMilestone(m.index)}
+                            disabled={actionLoading}
+                            className="btn btn-primary text-xs px-3 py-1.5 disabled:opacity-40"
+                          >
+                            <CheckCircle size={12} />
                             Approve
                           </button>
+                        )}
+
+                      {/* Admin: Release funds on-chain */}
+                      {!m.released && isAdmin && isActiveOrDisputed && (
+                        <div className="flex gap-1 ml-2">
                           <button
-                            onClick={() => approveMilestone(m.index, true)}
+                            onClick={() =>
+                              adminApproveMilestone(m.index, false)
+                            }
                             disabled={actionLoading}
-                            className="text-xs bg-orange-600 hover:bg-orange-700 disabled:bg-gray-700 text-white px-3 py-1.5 rounded-lg transition"
+                            className="btn btn-primary text-xs px-3 py-1.5 disabled:opacity-40"
+                          >
+                            Release
+                          </button>
+                          <button
+                            onClick={() =>
+                              adminApproveMilestone(m.index, true)
+                            }
+                            disabled={actionLoading}
+                            className="btn btn-secondary text-xs px-3 py-1.5 disabled:opacity-40"
                           >
                             Force
                           </button>
@@ -364,43 +670,152 @@ export default function EscrowDetailPage() {
                 ))}
               </div>
             </div>
+
+            {/* Dispute Form */}
+            {showDispute && (
+              <div className="border-2 border-accent p-5">
+                <h3 className="font-heading font-extrabold text-sm uppercase tracking-wider mb-4">
+                  File a Dispute
+                </h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">
+                      Reason *
+                    </label>
+                    <textarea
+                      rows={3}
+                      placeholder="Describe the issue..."
+                      value={disputeReason}
+                      onChange={(e) => setDisputeReason(e.target.value)}
+                      className="sd-input w-full resize-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">
+                      Evidence (optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Provide links, screenshots, or other evidence..."
+                      value={disputeEvidence}
+                      onChange={(e) => setDisputeEvidence(e.target.value)}
+                      className="sd-input w-full resize-none"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={createDispute}
+                      disabled={actionLoading || !disputeReason.trim()}
+                      className="btn btn-primary flex-1 disabled:opacity-40"
+                    >
+                      {actionLoading ? "Submitting..." : "Submit Dispute"}
+                    </button>
+                    <button
+                      onClick={() => setShowDispute(false)}
+                      className="btn btn-secondary"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Disputes list */}
+            {escrow.dispuInits?.length > 0 && (
+              <div className="border-2 border-divider">
+                <div className="px-5 py-3 border-b-2 border-divider">
+                  <h3 className="font-heading font-extrabold text-sm uppercase tracking-wider">
+                    Disputes
+                  </h3>
+                </div>
+                {escrow.dispuInits.map((d: any) => (
+                  <div
+                    key={d.id}
+                    className="px-5 py-4 border-b border-divider last:border-0"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span
+                        className={`tag ${
+                          d.outcome === "PENDING"
+                            ? "tag-accent"
+                            : "tag-neutral"
+                        }`}
+                      >
+                        {d.outcome}
+                      </span>
+                      <span className="text-xs opacity-50">
+                        {new Date(d.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-sm">{d.reason}</p>
+                    {d.evidence && (
+                      <p className="text-xs opacity-50 mt-1">{d.evidence}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Quick Actions */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
-              <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
-              <div className="space-y-3">
-                {escrow.state === "CREATED" && (
-                  <button className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-3 rounded-xl transition text-sm font-medium">
-                    💰 Fund Escrow
+          <div className="space-y-4">
+            {/* Actions */}
+            <div className="border-2 border-divider">
+              <div className="px-5 py-3 border-b-2 border-divider">
+                <h3 className="font-heading font-extrabold text-sm uppercase tracking-wider">
+                  Quick Actions
+                </h3>
+              </div>
+              <div className="p-5 space-y-3">
+                {escrow.state === "CREATED" && isBuyer && (
+                  <button
+                    onClick={generateDepositWallet}
+                    disabled={actionLoading}
+                    className="btn btn-primary w-full disabled:opacity-40"
+                  >
+                    <Wallet size={16} />
+                    {escrow.depositWalletAddr
+                      ? "View Deposit Info"
+                      : "Fund Escrow"}
                   </button>
                 )}
-                {escrow.state === "FUNDED" && (
-                  <button className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl transition text-sm font-medium">
-                    🔄 Activate Escrow
+                {canDispute && (
+                  <button
+                    onClick={() => setShowDispute(!showDispute)}
+                    className="btn btn-secondary w-full"
+                  >
+                    <Flag size={16} />
+                    {showDispute ? "Cancel Dispute" : "File Dispute"}
                   </button>
                 )}
-                {(escrow.state === "ACTIVE" || escrow.state === "DISPUTED") && (
-                  <button className="w-full bg-red-600/20 hover:bg-red-600/30 text-red-400 py-3 rounded-xl transition text-sm font-medium border border-red-500/30">
-                    ⚠️ Initiate Dispute
+                {canRefund && (
+                  <button
+                    onClick={requestRefund}
+                    disabled={actionLoading}
+                    className="btn btn-secondary w-full disabled:opacity-40"
+                  >
+                    <Undo2 size={16} />
+                    Request Refund
                   </button>
                 )}
-                {escrow.state !== "COMPLETED" && escrow.state !== "REFUNDED" && (
-                  <button className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 rounded-xl transition text-sm font-medium">
-                    ↩️ Request Refund
-                  </button>
-                )}
-                {isAdmin && (
-                  <div className="pt-3 border-t border-gray-700">
-                    <p className="text-xs text-gray-500 mb-2">Admin Actions</p>
+                <button onClick={openChat} className="btn btn-secondary w-full">
+                  <MessageSquare size={16} />
+                  Support Chat
+                </button>
+                {isAdmin && isActiveOrDisputed && (
+                  <div className="pt-3 border-t-2 border-divider">
+                    <p className="text-[11px] uppercase tracking-wider opacity-50 mb-2">
+                      Admin Actions
+                    </p>
                     <button
-                      onClick={approveAll}
+                      onClick={adminApproveAll}
                       disabled={actionLoading}
-                      className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 text-white py-3 rounded-xl transition text-sm font-medium"
+                      className="btn btn-primary w-full disabled:opacity-40"
                     >
-                      {actionLoading ? "Processing..." : "🔐 Approve All Milestones"}
+                      {actionLoading
+                        ? "Processing..."
+                        : "Release All Milestones"}
                     </button>
                   </div>
                 )}
@@ -408,73 +823,110 @@ export default function EscrowDetailPage() {
             </div>
 
             {/* Deposit Info */}
-            {escrow.state === "CREATED" || escrow.state === "FUNDED" ? (
-              <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
-                <h3 className="text-lg font-semibold mb-4">Deposit Info</h3>
-                {escrow.depositWalletAddr ? (
-                  <div className="space-y-4">
-                    {/* QR Code */}
-                    <div className="flex justify-center">
-                      <div className="bg-white p-4 rounded-xl">
-                        <QRCodeSVG
-                          value={escrow.depositWalletAddr}
-                          size={160}
-                          level="H"
-                          includeMargin={false}
+            {(escrow.state === "CREATED" || escrow.state === "FUNDED") && (
+              <div className="border-2 border-divider">
+                <div className="px-5 py-3 border-b-2 border-divider">
+                  <h3 className="font-heading font-extrabold text-sm uppercase tracking-wider">
+                    Deposit Info
+                  </h3>
+                </div>
+                <div className="p-5 space-y-4">
+                  {escrow.depositWalletAddr ? (
+                    <>
+                      <div className="flex justify-center">
+                        <div className="bg-white p-3 border-2 border-divider">
+                          <QRCodeSVG
+                            value={escrow.depositWalletAddr}
+                            size={160}
+                            level="H"
+                            includeMargin={false}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider opacity-50 mb-1">
+                          Deposit Address
+                        </p>
+                        <p className="text-sm font-mono break-all text-text">
+                          {escrow.depositWalletAddr}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider opacity-50 mb-1">
+                          Expected Amount
+                        </p>
+                        <p className="text-sm font-heading font-extrabold text-text">
+                          {escrow.totalAmount} {escrow.token?.symbol}
+                        </p>
+                      </div>
+                      <div className="border-2 border-yellow-600 bg-yellow-600/5 p-3">
+                        <p className="text-xs text-yellow-700 flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          Send exactly {escrow.totalAmount}{" "}
+                          {escrow.token?.symbol} on the{" "}
+                          {escrow.network} network. Sending wrong tokens
+                          or wrong amounts may result in loss of funds.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() =>
+                          copyAddress(escrow.depositWalletAddr)
+                        }
+                        className="btn btn-secondary w-full"
+                      >
+                        {copied ? (
+                          <Check size={16} />
+                        ) : (
+                          <Copy size={16} />
+                        )}
+                        {copied ? "Copied!" : "Copy Address"}
+                      </button>
+                      {showVerifyInput && (
+                        <input
+                          type="text"
+                          placeholder="0x... transaction hash"
+                          value={verifyTxHash}
+                          onChange={(e) => setVerifyTxHash(e.target.value)}
+                          className="sd-input w-full font-mono text-xs"
                         />
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Deposit Address</p>
-                      <p className="text-sm text-white font-mono break-all">{escrow.depositWalletAddr}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Expected Amount</p>
-                      <p className="text-sm text-white">{escrow.totalAmount} {escrow.token?.symbol}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Network</p>
-                      <p className="text-sm text-white">{NETWORK_ICONS[escrow.network] || ""} {escrow.network}</p>
-                    </div>
+                      )}
+                      <button
+                        onClick={verifyDeposit}
+                        disabled={actionLoading}
+                        className="btn btn-secondary w-full disabled:opacity-40"
+                      >
+                        <RefreshCw size={16} />
+                        {actionLoading ? "Checking..." : showVerifyInput ? "Submit Verification" : "Verify Deposit"}
+                      </button>
+                    </>
+                  ) : escrow.state === "CREATED" && isBuyer ? (
                     <button
-                      onClick={() => navigator.clipboard.writeText(escrow.depositWalletAddr)}
-                      className="w-full bg-gray-800 hover:bg-gray-700 text-white text-sm py-2 rounded-lg transition"
+                      onClick={generateDepositWallet}
+                      disabled={actionLoading}
+                      className="btn btn-primary w-full disabled:opacity-40"
                     >
-                      📋 Copy Address
+                      <QrCode size={16} />
+                      {actionLoading
+                        ? "Generating..."
+                        : "Generate Deposit Wallet"}
                     </button>
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-400">Deposit wallet not yet generated</p>
-                )}
-              </div>
-            ) : null}
-
-            {/* Transactions */}
-            {escrow.transactions?.length > 0 && (
-              <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
-                <h3 className="text-lg font-semibold mb-4">Transactions</h3>
-                <div className="space-y-3">
-                  {escrow.transactions.slice(0, 10).map((tx: any) => (
-                    <div key={tx.id} className="p-3 bg-gray-800/50 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-400">{tx.type}</span>
-                        <span className="text-xs text-gray-500">
-                          {new Date(tx.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-300 font-mono mt-1 break-all">
-                        {tx.txHash?.slice(0, 20)}...
-                      </p>
-                    </div>
-                  ))}
+                  ) : (
+                    <p className="text-sm opacity-50 text-center py-4">
+                      Waiting for buyer to generate deposit wallet.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* Timestamps */}
-            <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
-              <h3 className="text-lg font-semibold mb-4">Timeline</h3>
-              <div className="space-y-3">
+            {/* Timeline */}
+            <div className="border-2 border-divider">
+              <div className="px-5 py-3 border-b-2 border-divider">
+                <h3 className="font-heading font-extrabold text-sm uppercase tracking-wider">
+                  Timeline
+                </h3>
+              </div>
+              <div>
                 {[
                   { label: "Created", date: escrow.createdAt },
                   { label: "Funded", date: escrow.fundedAt },
@@ -482,18 +934,140 @@ export default function EscrowDetailPage() {
                   { label: "Deadline", date: escrow.deadline },
                 ]
                   .filter((t) => t.date)
-                  .map((t) => (
-                    <div key={t.label} className="flex items-center justify-between">
-                      <span className="text-sm text-gray-400">{t.label}</span>
-                      <span className="text-sm text-white">
+                  .map((t, idx, arr) => (
+                    <div
+                      key={t.label}
+                      className={`flex items-center justify-between px-5 py-3 ${
+                        idx < arr.length - 1 ? "border-b border-divider" : ""
+                      }`}
+                    >
+                      <span className="text-sm opacity-50">{t.label}</span>
+                      <span className="text-sm text-text">
                         {new Date(t.date).toLocaleString()}
                       </span>
                     </div>
                   ))}
               </div>
             </div>
+
+            {/* Transactions */}
+            {escrow.transactions?.length > 0 && (
+              <div className="border-2 border-divider">
+                <div className="px-5 py-3 border-b-2 border-divider">
+                  <h3 className="font-heading font-extrabold text-sm uppercase tracking-wider">
+                    Transactions
+                  </h3>
+                </div>
+                <div>
+                  {escrow.transactions
+                    .slice(0, 10)
+                    .map((tx: any, idx: number) => (
+                      <div
+                        key={tx.id}
+                        className={`px-5 py-3 ${
+                          idx <
+                          Math.min(escrow.transactions.length, 10) - 1
+                            ? "border-b border-divider"
+                            : ""
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="tag tag-neutral">{tx.type}</span>
+                          <span className="text-xs opacity-50">
+                            {new Date(tx.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="text-xs font-mono opacity-50 mt-1 break-all">
+                          {tx.txHash?.slice(0, 20)}...
+                        </p>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Chat Panel */}
+        {showChat && (
+          <div className="fixed bottom-4 right-4 w-96 max-w-[calc(100vw-2rem)] border-2 border-divider bg-bg shadow-lg z-50">
+            <div className="px-4 py-3 border-b-2 border-divider flex items-center justify-between bg-surface">
+              <h4 className="font-heading font-extrabold text-sm">
+                Support Chat
+              </h4>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={refreshChat}
+                  className="opacity-50 hover:opacity-100"
+                >
+                  <RefreshCw size={14} />
+                </button>
+                <button
+                  onClick={() => setShowChat(false)}
+                  className="opacity-50 hover:opacity-100"
+                >
+                  &times;
+                </button>
+              </div>
+            </div>
+            <div className="h-64 overflow-y-auto p-4 space-y-3">
+              {chatMessages.length === 0 && (
+                <p className="text-sm opacity-50 text-center py-8">
+                  No messages yet. Send a message to start.
+                </p>
+              )}
+              {chatMessages.map((msg: any) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${
+                    msg.senderId === userId ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  <div
+                    className={`max-w-[80%] px-3 py-2 text-sm ${
+                      msg.senderId === userId
+                        ? "bg-accent text-white"
+                        : "bg-surface border border-divider text-text"
+                    }`}
+                  >
+                    {msg.sender?.isAdmin && (
+                      <p className="text-[10px] font-semibold mb-1 opacity-70">
+                        Admin
+                      </p>
+                    )}
+                    <p>{msg.content}</p>
+                    <p
+                      className={`text-[10px] mt-1 ${
+                        msg.senderId === userId
+                          ? "text-white/60"
+                          : "opacity-40"
+                      }`}
+                    >
+                      {new Date(msg.createdAt).toLocaleTimeString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-3 border-t-2 border-divider flex gap-2">
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendChatMessage()}
+                placeholder="Type a message..."
+                className="sd-input flex-1 text-sm"
+              />
+              <button
+                onClick={sendChatMessage}
+                disabled={!chatInput.trim()}
+                className="btn btn-primary px-3 disabled:opacity-40"
+              >
+                <Send size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

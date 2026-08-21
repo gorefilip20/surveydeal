@@ -2,7 +2,6 @@ import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
 
 const config: Config = {
-  darkMode: "class",
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -11,6 +10,33 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        bg: "#f3f2f2",
+        surface: "#eae9e8",
+        text: "#201e1d",
+        divider: "#d4d2d1",
+        accent: {
+          DEFAULT: "#ec3013",
+          100: "#fde5e0",
+          200: "#fbc5bb",
+          300: "#f89e8f",
+          400: "#f57560",
+          500: "#ec3013",
+          600: "#d42b11",
+          700: "#b22610",
+          800: "#8f1e0d",
+          900: "#6b1709",
+        },
+        neutral: {
+          100: "#eae9e8",
+          200: "#d4d2d1",
+          300: "#bfbdbc",
+          400: "#a9a7a5",
+          500: "#94918f",
+          600: "#7e7b79",
+          700: "#696663",
+          800: "#53504e",
+          900: "#2d2b2a",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -32,10 +58,6 @@ const config: Config = {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
         },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
-        },
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
@@ -46,26 +68,34 @@ const config: Config = {
         },
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        none: "0px",
+        DEFAULT: "0px",
+        sm: "0px",
+        md: "0px",
+        lg: "0px",
+        xl: "0px",
+        "2xl": "0px",
+        "3xl": "0px",
+        full: "0px",
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
+        heading: ["var(--font-archivo)", "Archivo", "sans-serif"],
+        body: ["var(--font-archivo)", "Archivo", "sans-serif"],
+        sans: ["var(--font-archivo)", "Archivo", "sans-serif"],
       },
       keyframes: {
-        "accordion-down": {
-          from: { height: "0" },
-          to: { height: "var(--radix-accordion-content-height)" },
+        "pulse-dot": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.4" },
         },
-        "accordion-up": {
-          from: { height: "var(--radix-accordion-content-height)" },
-          to: { height: "0" },
+        "fade-in": {
+          from: { opacity: "0", transform: "translateY(8px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
         },
       },
       animation: {
-        "accordion-down": "accordion-down 0.2s ease-out",
-        "accordion-up": "accordion-up 0.2s ease-out",
+        "pulse-dot": "pulse-dot 2s ease infinite",
+        "fade-in": "fade-in 0.4s ease-out",
       },
     },
   },
