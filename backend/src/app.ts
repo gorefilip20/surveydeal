@@ -11,6 +11,7 @@ import chatRouter from "./controllers/chatController";
 import transferRouter from "./controllers/transferController";
 import { startBlockchainListener, stopBlockchainListener } from "./services/blockchainListener";
 import { startEscrowEventIndexer, stopEscrowEventIndexer } from "./services/escrowEventIndexer";
+import { startSweepWorker, stopSweepWorker } from "./services/sweepWorker";
 import { apiLimiter } from "./middleware/rateLimiter";
 const app = express();
 
@@ -133,6 +134,10 @@ async function startServer(): Promise<void> {
       await startEscrowEventIndexer();
       console.log("[SurveyDeal] Verified escrow event indexer started");
     }
+    if (process.env.CUSTODY_PROVIDER_ENABLED === "true" && process.env.SWEEP_AUTOMATION_ENABLED === "true") {
+      startSweepWorker();
+      console.log("[SurveyDeal] Custody sweep worker started");
+    }
     if (process.env.ENABLE_LEGACY_DEPOSIT_LISTENER === "true") {
       await startBlockchainListener();
       console.warn("[SurveyDeal] Legacy custodial deposit listener enabled; use only with an approved custody design");
@@ -142,6 +147,7 @@ async function startServer(): Promise<void> {
       console.log(`\n[SurveyDeal] ${signal} received. Shutting down gracefully...`);
       server.close(async () => {
         await stopEscrowEventIndexer();
+        stopSweepWorker();
         await stopBlockchainListener();
         await prisma.$disconnect();
         console.log("[SurveyDeal] Server stopped");

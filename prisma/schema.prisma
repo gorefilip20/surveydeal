@@ -185,6 +185,7 @@ model Escrow {
   dispuInits              Dispute[]     @relation("DisputeEscrow")
   chainEvents             ChainEvent[]
   depositAddress      DepositAddress?
+  sweepJobs           SweepJob[]
   chatRooms               ChatRoom[]
 
   @@index([state])
@@ -330,6 +331,14 @@ enum WebhookStatus {
   PROCESSED
   FAILED
 }
+enum SweepJobStatus {
+  PENDING_APPROVAL
+  APPROVED
+  SUBMITTED
+  CONFIRMED
+  FAILED
+  CANCELLED
+}
 model DepositAddress {
   id              String   @id @default(cuid())
   escrow          Escrow   @relation(fields: [escrowId], references: [id], onDelete: Cascade)
@@ -364,10 +373,36 @@ model IncomingDeposit {
   observedAt        DateTime @default(now())
   confirmedAt       DateTime?
   createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+    updatedAt        DateTime       @updatedAt
+  sweepJob         SweepJob?
   @@unique([network, txHash, eventIndex])
+
   @@index([depositAddressId, status])
   @@index([network, recipient, status])
+}
+model SweepJob {
+  id                String   @id @default(cuid())
+  incomingDeposit   IncomingDeposit @relation(fields: [incomingDepositId], references: [id], onDelete: Cascade)
+  incomingDepositId String   @unique
+  escrow            Escrow   @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+  escrowId          String
+  provider          String
+  providerJobId     String?  @unique
+  network           String
+  tokenAddress      String
+  amountBaseUnits   String
+  destination       String
+  status            SweepJobStatus @default(PENDING_APPROVAL)
+  approvedBy        String?
+  approvedAt        DateTime?
+  submittedAt      DateTime?
+  confirmedAt      DateTime?
+  txHash            String?  @unique
+  lastError         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  @@index([status, createdAt])
+  @@index([escrowId, status])
 }
 model WebhookInbox {
   id          String @id @default(cuid())

@@ -6,6 +6,7 @@ import { prisma } from "../lib/prisma";
 import { SUPPORTED_CHAINS } from "../lib/chains";
 import { releaseMilestone, releaseAllMilestones } from "../services/escrowRelease";
 import { processRefund } from "../services/refundService";
+import { approveSweepJob } from "../services/sweepWorker";
 import { authLimiter } from "../middleware/rateLimiter";
 import { validate } from "../middleware/validate";
 import { adminLoginSchema, adminDisputeResolveSchema, adminTokenStatusSchema, adminUserStatusSchema, adminDepositAddressSchema } from "../middleware/schemas";
@@ -186,6 +187,17 @@ router.get("/deposit-addresses", authMiddleware, async (_req: AuthRequest, res: 
     tronTrc20Usdt: byKey[DEPOSIT_ADDRESS_KEYS.tronTrc20Usdt] || "",
     solana: byKey[DEPOSIT_ADDRESS_KEYS.solana] || "",
   }});
+});
+
+router.get("/sweeps", authMiddleware, async (_req: AuthRequest, res: Response) => {
+  const jobs = await prisma.sweepJob.findMany({ include: { escrow: { select: { id: true, onChainId: true, title: true } }, incomingDeposit: true }, orderBy: { createdAt: "desc" }, take: 100 });
+  res.json({ jobs });
+});
+
+router.post("/sweeps/:id/approve", authMiddleware, async (req: AuthRequest, res: Response) => {
+  const result = await approveSweepJob(String(req.params.id), req.adminId!);
+  if (!result.count) { res.status(409).json({ error: "Sweep is not pending approval or does not exist" }); return; }
+  res.json({ success: true, status: "APPROVED" });
 });
 
 router.patch("/deposit-addresses", authMiddleware, validate(adminDepositAddressSchema), async (req: AuthRequest, res: Response) => {
