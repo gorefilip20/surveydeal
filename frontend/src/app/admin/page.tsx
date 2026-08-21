@@ -90,7 +90,7 @@ const NETWORK_ABBR: Record<string, string> = {
 };
 
 export default function AdminDashboard() {
-  const [tab, setTab] = useState<"overview" | "users" | "escrows" | "tokens" | "disputes">("overview");
+  const [tab, setTab] = useState<"overview" | "users" | "escrows" | "tokens" | "disputes" | "deposits">("overview");
   const [token, setToken] = useState("");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [userAssets, setUserAssets] = useState<UserAsset[]>([]);
@@ -102,6 +102,7 @@ export default function AdminDashboard() {
   const [page, setPage] = useState(1);
   const [tokens, setTokens] = useState<any[]>([]);
   const [disputes, setDisputes] = useState<any[]>([]);
+  const [depositAddresses, setDepositAddresses] = useState({ bnbBep20Usdt: "", tronTrc20Usdt: "", solana: "" });
   const [feedback, setFeedback] = useState("");
   const [feedbackType, setFeedbackType] = useState<"error" | "success">("error");
   const [promptState, setPromptState] = useState<{ msg: string; value: string; fn: (val: string) => void } | null>(null);
@@ -177,6 +178,24 @@ export default function AdminDashboard() {
     setLoading(false);
   }, [token, page]);
 
+  const loadDepositAddresses = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/admin/deposit-addresses`, { headers });
+      const data = await res.json();
+      if (res.ok) setDepositAddresses(data.addresses || {});
+    } catch { showFeedback("Failed to load deposit addresses"); }
+  }, [token]);
+
+  const saveDepositAddresses = async () => {
+    try {
+      const res = await fetch(`${API}/admin/deposit-addresses`, { method: "PATCH", headers, body: JSON.stringify(depositAddresses) });
+      const data = await res.json();
+      if (!res.ok) { showFeedback(data.error || "Failed to save deposit addresses"); return; }
+      setDepositAddresses(data.addresses);
+      showFeedback("Deposit addresses saved as display-only custodial destinations", "success");
+    } catch { showFeedback("Failed to save deposit addresses"); }
+  };
+
   const updateTokenStatus = async (tokenId: string, status: string) => {
     try {
       const res = await fetch(`${API}/admin/tokens/${tokenId}/status`, {
@@ -229,6 +248,7 @@ export default function AdminDashboard() {
     else if (tab === "escrows") loadEscrows();
     else if (tab === "tokens") loadTokens();
     else if (tab === "disputes") loadDisputes();
+    else if (tab === "deposits") loadDepositAddresses();
   }, [tab, token, page]);
 
   const approveMilestone = async (escrowId: string, milestoneIndex: number, force = false) => {
@@ -355,6 +375,7 @@ export default function AdminDashboard() {
     { key: "escrows" as const, label: "Escrows" },
     { key: "tokens" as const, label: "Tokens" },
     { key: "disputes" as const, label: "Disputes" },
+    { key: "deposits" as const, label: "Deposit Addresses" },
   ];
 
   return (
@@ -811,6 +832,28 @@ export default function AdminDashboard() {
                 <p className="text-sm opacity-50">No disputes found.</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* DEPOSIT ADDRESSES TAB */}
+        {tab === "deposits" && (
+          <div className="sd-card p-6 max-w-3xl">
+            <div className="border-2 border-yellow-700 bg-yellow-50 text-yellow-900 p-4 mb-6">
+              <p className="text-sm"><strong>Display-only custodial addresses.</strong> These are shared receiving wallets, not per-escrow contract addresses. Do not enable this panel for real funds until monitoring, attribution, sweeping, recovery, and reconciliation are operational.</p>
+            </div>
+            <div className="space-y-5">
+              {[
+                ["bnbBep20Usdt", "BNB Smart Chain / BEP-20 USDT"],
+                ["tronTrc20Usdt", "TRON / TRC-20 USDT"],
+                ["solana", "Solana"],
+              ].map(([key, label]) => (
+                <label key={key} className="block">
+                  <span className="block text-xs uppercase tracking-wider opacity-60 mb-2">{label}</span>
+                  <input className="sd-input w-full font-mono text-sm" value={depositAddresses[key as keyof typeof depositAddresses]} onChange={(e) => setDepositAddresses({ ...depositAddresses, [key]: e.target.value })} />
+                </label>
+              ))}
+            </div>
+            <button onClick={saveDepositAddresses} className="btn btn-primary mt-6">Save display-only addresses</button>
           </div>
         )}
 

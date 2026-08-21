@@ -8,7 +8,7 @@ import { releaseMilestone, releaseAllMilestones } from "../services/escrowReleas
 import { processRefund } from "../services/refundService";
 import { authLimiter } from "../middleware/rateLimiter";
 import { validate } from "../middleware/validate";
-import { adminLoginSchema, adminDisputeResolveSchema, adminTokenStatusSchema, adminUserStatusSchema } from "../middleware/schemas";
+import { adminLoginSchema, adminDisputeResolveSchema, adminTokenStatusSchema, adminUserStatusSchema, adminDepositAddressSchema } from "../middleware/schemas";
 
 const router = Router();
 
@@ -166,6 +166,36 @@ router.post("/auth/login", authLimiter, async (req: Request, res: Response) => {
   } catch {
     res.status(500).json({ error: "Authentication failed" });
   }
+});
+
+// ══════════════════════════════════════════════════════════════
+//  DISPLAY-ONLY CUSTODIAL DEPOSIT ADDRESSES
+// ══════════════════════════════════════════════════════════════
+
+const DEPOSIT_ADDRESS_KEYS = {
+  bnbBep20Usdt: "depositAddress.BNB_BEP20_USDT",
+  tronTrc20Usdt: "depositAddress.TRON_TRC20_USDT",
+  solana: "depositAddress.SOLANA",
+} as const;
+
+router.get("/deposit-addresses", authMiddleware, async (_req: AuthRequest, res: Response) => {
+  const configs = await prisma.protocolConfig.findMany({ where: { key: { in: Object.values(DEPOSIT_ADDRESS_KEYS) } } });
+  const byKey = Object.fromEntries(configs.map((config) => [config.key, config.value]));
+  res.json({ displayOnly: true, custodial: true, addresses: {
+    bnbBep20Usdt: byKey[DEPOSIT_ADDRESS_KEYS.bnbBep20Usdt] || "",
+    tronTrc20Usdt: byKey[DEPOSIT_ADDRESS_KEYS.tronTrc20Usdt] || "",
+    solana: byKey[DEPOSIT_ADDRESS_KEYS.solana] || "",
+  }});
+});
+
+router.patch("/deposit-addresses", authMiddleware, validate(adminDepositAddressSchema), async (req: AuthRequest, res: Response) => {
+  const values = req.body as { bnbBep20Usdt: string; tronTrc20Usdt: string; solana: string };
+  await prisma.$transaction(Object.entries(values).map(([name, value]) => prisma.protocolConfig.upsert({
+    where: { key: DEPOSIT_ADDRESS_KEYS[name as keyof typeof DEPOSIT_ADDRESS_KEYS] },
+    create: { key: DEPOSIT_ADDRESS_KEYS[name as keyof typeof DEPOSIT_ADDRESS_KEYS], value, description: "Public custodial deposit address; display-only until custody/reconciliation is enabled", updatedBy: req.adminId },
+    update: { value, updatedBy: req.adminId },
+  })));
+  res.json({ success: true, displayOnly: true, custodial: true, addresses: values });
 });
 
 // ══════════════════════════════════════════════════════════════

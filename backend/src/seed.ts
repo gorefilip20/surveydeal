@@ -8,7 +8,8 @@ async function main() {
   // ──────────────────────────────────────────────
   //  ADMIN USER (Hardhat Account #0)
   // ──────────────────────────────────────────────
-  const adminWallet = (process.env.ADMIN_WALLET || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266").toLowerCase();
+  const adminWallet = process.env.ADMIN_WALLET?.toLowerCase();
+  if (!adminWallet) throw new Error("ADMIN_WALLET must be set before seeding");
 
   const admin = await prisma.user.upsert({
     where: { walletAddress: adminWallet },
@@ -32,6 +33,9 @@ async function main() {
     { key: "maxFeeAbsolute", value: "50000000", description: "Max fee cap in token base units (50 USDC)" },
     { key: "feeRecipient", value: adminWallet, description: "Wallet receiving protocol fees" },
     { key: "paused", value: "false", description: "Protocol pause state" },
+    { key: "depositAddress.BNB_BEP20_USDT", value: process.env.DEPOSIT_ADDRESS_BNB_BEP20_USDT || "0xF071f5f6D703dF16cE3715A912ef08791b783CDe", description: "Display-only shared BNB BEP-20 USDT receiving address; not an escrow contract" },
+    { key: "depositAddress.TRON_TRC20_USDT", value: process.env.DEPOSIT_ADDRESS_TRON_TRC20_USDT || "TJ8ujYSpvqxEb5PqoLrwE5UfKC9y6rNtQo", description: "Display-only shared TRC-20 USDT receiving address; not an escrow contract" },
+    { key: "depositAddress.SOLANA", value: process.env.DEPOSIT_ADDRESS_SOLANA || "HqjaGA1uptgrmhiBNz9apbbNzNAPULHs6KWiGqmJZKMd", description: "Display-only shared Solana receiving address; not an escrow contract" },
   ];
 
   for (const d of defaults) {

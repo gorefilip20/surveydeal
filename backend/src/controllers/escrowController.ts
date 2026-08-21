@@ -903,6 +903,31 @@ router.post("/escrows/:id/verify-deposit", userAuth, validate(verifyDepositSchem
 });
 
 // ══════════════════════════════════════════════════════════════
+//  DISPLAY-ONLY DEPOSIT ADDRESSES
+// ══════════════════════════════════════════════════════════════
+
+router.get("/deposit-addresses", async (_req: Request, res: Response) => {
+  try {
+    const configs = await prisma.protocolConfig.findMany({
+      where: { key: { in: ["depositAddress.BNB_BEP20_USDT", "depositAddress.TRON_TRC20_USDT", "depositAddress.SOLANA"] } },
+    });
+    const byKey = Object.fromEntries(configs.map((config) => [config.key, config.value]));
+    res.json({
+      displayOnly: true,
+      custodial: true,
+      warning: "These are shared receiving addresses, not per-escrow contract addresses. Verify the network and token before sending funds.",
+      addresses: {
+        bnbBep20Usdt: byKey["depositAddress.BNB_BEP20_USDT"] || "",
+        tronTrc20Usdt: byKey["depositAddress.TRON_TRC20_USDT"] || "",
+        solana: byKey["depositAddress.SOLANA"] || "",
+      },
+    });
+  } catch {
+    res.status(500).json({ error: "Deposit addresses are not configured" });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 //  PRICE FEED (CoinGecko proxy)
 // ══════════════════════════════════════════════════════════════
 

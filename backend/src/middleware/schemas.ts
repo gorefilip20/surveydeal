@@ -73,6 +73,12 @@ export const adminUserStatusSchema = z.object({
   reason: z.string().max(500).optional(),
 });
 
+export const adminDepositAddressSchema = z.object({
+  bnbBep20Usdt: ethAddress,
+  tronTrc20Usdt: z.string().regex(/^T[1-9A-HJ-NP-Za-km-z]{33}$/, "Invalid TRON address"),
+  solana: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, "Invalid Solana address"),
+});
+
 export const chatRoomCreateSchema = z.object({
   escrowId: z.string().optional(),
   subject: z.string().min(1).max(200).optional(),

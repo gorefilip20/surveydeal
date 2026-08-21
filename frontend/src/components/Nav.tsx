@@ -30,6 +30,7 @@ export default function Nav() {
     { href: "/dashboard", label: "Dashboard" },
     { href: "/escrow/create", label: "Create" },
     { href: "/swap", label: "Swap" },
+    { href: "/deposit", label: "Deposit" },
   ];
 
   return (
