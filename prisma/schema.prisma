@@ -90,7 +90,7 @@ model User {
   dispuInits        Dispute[]   @relation("DisputeInitiator")
   dispuResolvs      Dispute[]   @relation("DisputeResolver")
   wallets           UserWallet[]
-  chatRooms         ChatRoom[]
+  chatRooms           ChatRoom[]
   chatMessages      ChatMessage[]
   adminTransfers    AdminTransfer[]
 
@@ -184,6 +184,7 @@ model Escrow {
   transactions            Transaction[]
   dispuInits              Dispute[]     @relation("DisputeEscrow")
   chainEvents             ChainEvent[]
+  depositAddress      DepositAddress?
   chatRooms               ChatRoom[]
 
   @@index([state])
@@ -312,6 +313,74 @@ model ChainEvent {
   @@index([status])
 }
 
+enum DepositAddressStatus {
+  ACTIVE
+  REVOKED
+}
+enum IncomingDepositStatus {
+  RECEIVED
+  CONFIRMED
+  REJECTED
+  UNMATCHED
+  REORGED
+  SWEPT
+}
+enum WebhookStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+}
+model DepositAddress {
+  id              String   @id @default(cuid())
+  escrow          Escrow   @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+  escrowId        String   @unique
+  provider        String
+  providerRef     String   @unique
+  network         String
+  asset           String
+  address         String
+  status          DepositAddressStatus @default(ACTIVE)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deposits        IncomingDeposit[]
+  @@unique([network, address])
+  @@index([network, asset, status])
+}
+model IncomingDeposit {
+  id                String   @id @default(cuid())
+  depositAddress    DepositAddress @relation(fields: [depositAddressId], references: [id], onDelete: Cascade)
+  depositAddressId  String
+  network           String
+  asset             String
+  txHash            String
+  eventIndex        Int?
+  blockNumber       BigInt?
+  amountBaseUnits   String
+  sender            String
+  recipient         String
+  confirmations     Int      @default(0)
+  status            IncomingDepositStatus @default(RECEIVED)
+  rawPayload        Json?
+  observedAt        DateTime @default(now())
+  confirmedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  @@unique([network, txHash, eventIndex])
+  @@index([depositAddressId, status])
+  @@index([network, recipient, status])
+}
+model WebhookInbox {
+  id          String @id @default(cuid())
+  provider    String
+  eventId     String
+  payload     Json
+  status      WebhookStatus @default(RECEIVED)
+  error       String?
+  receivedAt  DateTime @default(now())
+  processedAt DateTime?
+  @@unique([provider, eventId])
+  @@index([status, receivedAt])
+}
 // ─── CHAT SYSTEM ────────────────────────────────────
 
 enum ChainEventStatus {

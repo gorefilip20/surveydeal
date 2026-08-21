@@ -42,7 +42,7 @@ app.use(cors({
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(compression());
-app.use(express.json({ limit: "5mb" }));
+app.use(express.json({ limit: "5mb", verify: (req, _res, buf) => { (req as any).rawBody = Buffer.from(buf); } }));
 app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 app.use(apiLimiter);
 

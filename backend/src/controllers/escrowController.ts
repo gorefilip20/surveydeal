@@ -9,6 +9,7 @@ import {
   confirmDeposit,
 } from "../services/blockchainListener";
 import { authLimiter, depositLimiter } from "../middleware/rateLimiter";
+import { normalizeDepositEvent, persistIncomingDeposit, verifyWebhookSignature } from "../services/depositWebhookService";
 import { validate } from "../middleware/validate";
 import {
   loginSchema, profileUpdateSchema, createEscrowSchema,
@@ -903,6 +904,33 @@ router.post("/escrows/:id/verify-deposit", userAuth, validate(verifyDepositSchem
 });
 
 // ══════════════════════════════════════════════════════════════
+//  CUSTODY PROVIDER WEBHOOK INGESTION
+// ══════════════════════════════════════════════════════════════
+
+router.post("/webhooks/custody/:provider", async (req: Request, res: Response) => {
+  const secret = process.env.CUSTODY_WEBHOOK_SECRET;
+  const rawBody = (req as Request & { rawBody?: Buffer }).rawBody || Buffer.from(JSON.stringify(req.body));
+  if (!verifyWebhookSignature(rawBody, req.header("x-provider-signature"), secret)) {
+    res.status(401).json({ error: "Invalid webhook signature" });
+    return;
+  }
+  try {
+    const provider = String(req.params.provider);
+    const event = normalizeDepositEvent(provider, req.body);
+    await prisma.webhookInbox.upsert({
+      where: { provider_eventId: { provider, eventId: event.id } },
+      create: { provider, eventId: event.id, payload: req.body as any, status: "RECEIVED" },
+      update: {},
+    });
+    const result = await persistIncomingDeposit(event);
+    await prisma.webhookInbox.update({ where: { provider_eventId: { provider, eventId: event.id } }, data: { status: "PROCESSED", processedAt: new Date() } });
+    res.status(202).json({ accepted: true, status: result.status, escrowId: result.escrowId });
+  } catch (error: any) {
+    console.error("[CUSTODY WEBHOOK]", error);
+    res.status(400).json({ error: "Invalid custody webhook event" });
+  }
+});
+
 //  DISPLAY-ONLY DEPOSIT ADDRESSES
 // ══════════════════════════════════════════════════════════════
 
