@@ -84,7 +84,7 @@ const NETWORK_ICONS: Record<string, string> = {
 };
 
 export default function AdminDashboard() {
-  const [tab, setTab] = useState<"overview" | "users" | "escrows" | "tokens">("overview");
+  const [tab, setTab] = useState<"overview" | "users" | "escrows" | "tokens" | "payments">("overview");
   const [token, setToken] = useState("");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [userAssets, setUserAssets] = useState<UserAsset[]>([]);
@@ -94,6 +94,9 @@ export default function AdminDashboard() {
   const [selectedUser, setSelectedUser] = useState<UserAsset | null>(null);
   const [selectedEscrow, setSelectedEscrow] = useState<any>(null);
   const [page, setPage] = useState(1);
+  const [paymentWallets, setPaymentWallets] = useState<Array<{ id: string; symbol: string; network: string; address: string; label: string; instructions: string; isActive: boolean }>>([]);
+  const [walletsLoading, setWalletsLoading] = useState(false);
+  const [walletsSaving, setWalletsSaving] = useState(false);
 
   // ── Auth ──
   useEffect(() => {
@@ -126,6 +129,19 @@ export default function AdminDashboard() {
     setLoading(false);
   }, [token, search, page]);
 
+  const loadPaymentWallets = useCallback(async () => {
+    setWalletsLoading(true);
+    try {
+      const res = await fetch(`${API}/admin/payment-wallets`, { headers });
+      const data = await res.json();
+      setPaymentWallets(Array.isArray(data.wallets) ? data.wallets : []);
+    } catch (err) {
+      console.error("Failed to load payment wallets", err);
+    } finally {
+      setWalletsLoading(false);
+    }
+  }, [token]);
+
   const loadEscrows = useCallback(async () => {
     setLoading(true);
     try {
@@ -143,6 +159,7 @@ export default function AdminDashboard() {
     if (tab === "overview") loadOverview();
     else if (tab === "users") loadUserAssets();
     else if (tab === "escrows") loadEscrows();
+    else if (tab === "payments") loadPaymentWallets();
   }, [tab, token, page]);
 
   // ── Admin Actions ──
@@ -178,6 +195,25 @@ export default function AdminDashboard() {
       }
     } catch (err) {
       alert("Failed to approve all");
+    }
+  };
+
+  const savePaymentWallets = async () => {
+    setWalletsSaving(true);
+    try {
+      const res = await fetch(`${API}/admin/payment-wallets`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ wallets: paymentWallets }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Unable to save payment wallets");
+      setPaymentWallets(data.wallets || []);
+      alert("Payment wallets published to the frontend.");
+    } catch (err: any) {
+      alert(err.message || "Failed to save payment wallets");
+    } finally {
+      setWalletsSaving(false);
     }
   };
 
@@ -296,7 +332,7 @@ export default function AdminDashboard() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         {/* Tab Navigation */}
         <div className="flex gap-1 mb-6 bg-gray-900 rounded-xl p-1 w-fit">
-          {(["overview", "users", "escrows", "tokens"] as const).map((t) => (
+          {(["overview", "users", "escrows", "tokens", "payments"] as const).map((t) => (
             <button
               key={t}
               onClick={() => { setTab(t); setPage(1); setSelectedUser(null); setSelectedEscrow(null); }}
@@ -306,7 +342,7 @@ export default function AdminDashboard() {
                   : "text-gray-400 hover:text-white hover:bg-gray-800"
               }`}
             >
-              {t === "overview" ? "📊 Overview" : t === "users" ? "👥 Users & Assets" : t === "escrows" ? "📋 Escrows" : "🪙 Tokens"}
+              {t === "overview" ? "📊 Overview" : t === "users" ? "👥 Users & Assets" : t === "escrows" ? "📋 Escrows" : t === "tokens" ? "🪙 Tokens" : "💳 Payment Wallets"}
             </button>
           ))}
         </div>
@@ -498,6 +534,23 @@ export default function AdminDashboard() {
                 </div>
               ))
             )}
+          </div>
+        )}
+
+        {tab === "payments" && (
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-400">Payment rails</p>
+                  <h2 className="mt-2 text-2xl font-black text-white">Public payment wallets</h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400">These addresses will be visible on the public homepage. Only add wallets controlled by your organization, and always label the exact network to prevent mistaken deposits.</p>
+                </div>
+                <button onClick={() => setPaymentWallets([...paymentWallets, { id: `wallet-${Date.now()}`, symbol: "", network: "", address: "", label: "", instructions: "", isActive: true }])} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-500">+ Add wallet</button>
+              </div>
+            </div>
+            {walletsLoading ? <p className="text-gray-400">Loading payment wallets…</p> : paymentWallets.length === 0 ? <div className="rounded-2xl border border-dashed border-gray-700 p-10 text-center text-gray-400">No payment wallets configured yet. Add one to publish a deposit option on the homepage.</div> : <div className="space-y-4">{paymentWallets.map((wallet, index) => <div key={wallet.id} className="rounded-2xl border border-gray-800 bg-gray-900 p-5"><div className="grid gap-3 md:grid-cols-2"><input value={wallet.symbol} onChange={(e) => setPaymentWallets(paymentWallets.map((item, i) => i === index ? { ...item, symbol: e.target.value } : item))} placeholder="Coin symbol (e.g. USDC)" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" /><input value={wallet.network} onChange={(e) => setPaymentWallets(paymentWallets.map((item, i) => i === index ? { ...item, network: e.target.value } : item))} placeholder="Network (e.g. Base, ERC-20)" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" /><input value={wallet.address} onChange={(e) => setPaymentWallets(paymentWallets.map((item, i) => i === index ? { ...item, address: e.target.value } : item))} placeholder="Wallet address" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white md:col-span-2" /><input value={wallet.label} onChange={(e) => setPaymentWallets(paymentWallets.map((item, i) => i === index ? { ...item, label: e.target.value } : item))} placeholder="Label (optional)" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" /><input value={wallet.instructions} onChange={(e) => setPaymentWallets(paymentWallets.map((item, i) => i === index ? { ...item, instructions: e.target.value } : item))} placeholder="Instructions (optional)" className="rounded-xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-sm text-white" /></div><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><label className="flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" checked={wallet.isActive} onChange={(e) => setPaymentWallets(paymentWallets.map((item, i) => i === index ? { ...item, isActive: e.target.checked } : item))} className="h-4 w-4 accent-blue-600" /> Visible on frontend</label><button onClick={() => setPaymentWallets(paymentWallets.filter((_, i) => i !== index))} className="text-sm font-bold text-red-400 hover:text-red-300">Remove</button></div></div>)}</div>}
+            <div className="flex justify-end"><button disabled={walletsSaving} onClick={savePaymentWallets} className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-black text-white hover:bg-emerald-500 disabled:opacity-50">{walletsSaving ? "Publishing…" : "Publish wallets to frontend"}</button></div>
           </div>
         )}
 

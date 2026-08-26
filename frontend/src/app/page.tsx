@@ -1,216 +1,93 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
 const CHAINS = [
-  { id: "ETHEREUM", name: "Ethereum", icon: "🔷", nativeCurrency: "ETH", color: "#627EEA" },
-  { id: "BNB_CHAIN", name: "BNB Chain", icon: "🟡", nativeCurrency: "BNB", color: "#F0B90B" },
-  { id: "POLYGON", name: "Polygon", icon: "🟣", nativeCurrency: "MATIC", color: "#8247E5" },
-  { id: "ARBITRUM", name: "Arbitrum", icon: "🔵", nativeCurrency: "ETH", color: "#28A0F0" },
-  { id: "BASE", name: "Base", icon: "🔷", nativeCurrency: "ETH", color: "#0052FF" },
-  { id: "SOLANA", name: "Solana", icon: "☀️", nativeCurrency: "SOL", color: "#9945FF" },
-  { id: "TRON", name: "TRON", icon: "🔴", nativeCurrency: "TRX", color: "#FF0013" },
-  { id: "AVALANCHE", name: "Avalanche", icon: "🔺", nativeCurrency: "AVAX", color: "#E84142" },
+  ["Ethereum", "◆", "#627eea"],
+  ["BNB Chain", "●", "#f0b90b"],
+  ["Polygon", "●", "#8247e5"],
+  ["Arbitrum", "●", "#28a0f0"],
+  ["Base", "◆", "#0052ff"],
+  ["Avalanche", "▲", "#e84142"],
 ];
 
 const FEATURES = [
-  {
-    icon: "🔒",
-    title: "Smart Contract Escrow",
-    desc: "Funds locked in audited smart contracts. Neither party can cheat.",
-  },
-  {
-    icon: "🌍",
-    title: "Multi-Chain Support",
-    desc: "Trade on Ethereum, BNB, Polygon, Arbitrum, Base, Solana, TRON and more.",
-  },
-  {
-    icon: "🪙",
-    title: "All Tokens Welcome",
-    desc: "ERC-20, SPL tokens, memecoins, stablecoins — any token, any chain.",
-  },
-  {
-    icon: "👨‍⚖️",
-    title: "Arbiter Resolution",
-    desc: "Neutral third-party settles disputes with fair percentage splits.",
-  },
-  {
-    icon: "📊",
-    title: "Milestone Payments",
-    desc: "Release funds in stages as work is delivered and approved.",
-  },
-  {
-    icon: "⚡",
-    title: "Instant Settlement",
-    desc: "On-chain settlement in seconds. No middlemen, no delays.",
-  },
+  { number: "01", title: "Milestone protection", text: "Release funds only when delivery is accepted. Every step is recorded for both parties." },
+  { number: "02", title: "Flexible settlement", text: "Support token deals, service work, and cross-border payments with transparent rules." },
+  { number: "03", title: "Dispute-ready by design", text: "Keep evidence, approvals, and resolution terms together in one auditable workspace." },
 ];
 
+type PaymentWallet = { id: string; symbol: string; network: string; address: string; label?: string; instructions?: string; isActive: boolean };
+
+function shorten(address: string) {
+  return address.length > 18 ? `${address.slice(0, 10)}…${address.slice(-8)}` : address;
+}
+
 export default function LandingPage() {
-  const [stats, setStats] = useState({ escrows: 0, volume: "0", users: 0 });
+  const [wallets, setWallets] = useState<PaymentWallet[]>([]);
+
+  useEffect(() => {
+    fetch(`${API}/payment-wallets`)
+      .then((response) => response.ok ? response.json() : { wallets: [] })
+      .then((data) => setWallets(Array.isArray(data.wallets) ? data.wallets : []))
+      .catch(() => setWallets([]));
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      {/* Navigation */}
-      <nav className="border-b border-gray-800/50 bg-gray-950/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-lg font-bold">
-              SD
-            </div>
-            <span className="text-xl font-bold">SurveyDeal</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-sm text-gray-400 hover:text-white transition">
-              Dashboard
-            </Link>
-            <Link href="/admin" className="text-sm text-gray-400 hover:text-white transition">
-              Admin
-            </Link>
-            <Link
-              href="/escrow/create"
-              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition"
-            >
-              Create Escrow
-            </Link>
+    <main className="min-h-screen overflow-hidden bg-[#f7fbff] text-slate-900">
+      <div className="pointer-events-none fixed inset-0 -z-0 overflow-hidden">
+        <div className="absolute -left-40 -top-40 h-[28rem] w-[28rem] rounded-full bg-cyan-200/50 blur-3xl" />
+        <div className="absolute right-[-10rem] top-40 h-[32rem] w-[32rem] rounded-full bg-violet-200/45 blur-3xl" />
+      </div>
+
+      <nav className="relative z-10 border-b border-slate-200/80 bg-white/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
+          <Link href="/" className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-violet-600 text-lg font-black text-white shadow-lg shadow-cyan-500/20">SD</span>
+            <span className="text-xl font-black tracking-tight">SurveyDeal<span className="text-cyan-600">.</span></span>
+          </Link>
+          <div className="flex items-center gap-3 sm:gap-6">
+            <Link href="/dashboard" className="hidden text-sm font-semibold text-slate-600 transition hover:text-slate-950 sm:inline">Dashboard</Link>
+            <Link href="/admin" className="hidden text-sm font-semibold text-slate-600 transition hover:text-slate-950 sm:inline">Admin</Link>
+            <Link href="/escrow/create" className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:bg-cyan-700">Create escrow</Link>
           </div>
         </div>
       </nav>
 
-      {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 via-purple-500/5 to-transparent" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-24 pb-20 relative">
-          <div className="text-center max-w-4xl mx-auto">
-            <div className="inline-flex items-center gap-2 bg-gray-800/50 border border-gray-700 rounded-full px-4 py-1.5 text-sm text-gray-300 mb-6">
-              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              Live on BNB Chain, Ethereum, Polygon & more
-            </div>
-            <h1 className="text-5xl sm:text-6xl font-bold leading-tight">
-              Trade Crypto
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-                {" "}Without Trust Issues
-              </span>
-            </h1>
-            <p className="text-lg text-gray-400 mt-6 max-w-2xl mx-auto">
-              The decentralized escrow platform for buying and selling any token — memecoins, ERC-20s, SPL tokens.
-              Smart contracts hold funds until both parties agree.
-            </p>
-            <div className="flex items-center justify-center gap-4 mt-10">
-              <Link
-                href="/escrow/create"
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3.5 rounded-xl transition text-lg"
-              >
-                Start Trading →
-              </Link>
-              <a
-                href="https://github.com/gorefilip20/surveydeal"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-gray-800 hover:bg-gray-700 text-white font-medium px-8 py-3.5 rounded-xl border border-gray-700 transition"
-              >
-                View on GitHub
-              </a>
-            </div>
+      <section className="relative z-10 mx-auto grid max-w-7xl gap-14 px-5 pb-20 pt-16 lg:grid-cols-[1.05fr_.95fr] lg:items-center lg:px-8 lg:pb-28 lg:pt-24">
+        <div>
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white/80 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-cyan-700 shadow-sm"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Built for safer digital deals</div>
+          <h1 className="max-w-3xl text-5xl font-black leading-[0.98] tracking-[-0.04em] text-slate-950 sm:text-7xl">Trade with clarity.<br /><span className="bg-gradient-to-r from-cyan-600 via-blue-600 to-violet-600 bg-clip-text text-transparent">Settle with confidence.</span></h1>
+          <p className="mt-7 max-w-xl text-lg leading-8 text-slate-600">SurveyDeal Escrow gives buyers and sellers a shared, milestone-based space to fund, deliver, approve, and resolve transactions without guesswork.</p>
+          <div className="mt-9 flex flex-wrap gap-3">
+            <Link href="/escrow/create" className="rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 px-6 py-3.5 text-base font-extrabold text-white shadow-xl shadow-cyan-600/20 transition hover:-translate-y-0.5">Start an escrow <span className="ml-2">→</span></Link>
+            <Link href="/dashboard" className="rounded-2xl border border-slate-300 bg-white px-6 py-3.5 text-base font-bold text-slate-700 transition hover:border-cyan-400 hover:text-cyan-700">Open dashboard</Link>
           </div>
+          <div className="mt-10 flex flex-wrap gap-6 text-sm font-semibold text-slate-500"><span>✓ Clear milestones</span><span>✓ Wallet-based access</span><span>✓ On-chain evidence</span></div>
+        </div>
 
-          {/* Supported Chains */}
-          <div className="mt-20">
-            <p className="text-center text-sm text-gray-500 mb-6">Supported Networks</p>
-            <div className="flex justify-center gap-6 flex-wrap">
-              {CHAINS.map((chain) => (
-                <div key={chain.id} className="flex items-center gap-2 text-gray-400 hover:text-white transition">
-                  <span className="text-2xl">{chain.icon}</span>
-                  <span className="text-sm font-medium">{chain.name}</span>
-                </div>
-              ))}
-            </div>
+        <div className="relative">
+          <div className="absolute -inset-5 rounded-[2rem] bg-gradient-to-br from-cyan-400/20 via-blue-400/10 to-violet-400/20 blur-2xl" />
+          <div className="relative rounded-[2rem] border border-white bg-white/90 p-5 shadow-2xl shadow-blue-900/10 sm:p-7">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-5"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Escrow workspace</p><p className="mt-1 text-lg font-black">Website redesign project</p></div><span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">In progress</span></div>
+            <div className="mt-6 rounded-2xl bg-gradient-to-br from-slate-950 to-blue-950 p-5 text-white"><div className="flex items-center justify-between"><span className="text-sm text-blue-200">Protected value</span><span className="text-xs text-emerald-300">● funded</span></div><p className="mt-3 text-4xl font-black">12,500 <span className="text-lg text-blue-200">USDC</span></p><div className="mt-5 h-2 rounded-full bg-white/15"><div className="h-2 w-2/3 rounded-full bg-gradient-to-r from-cyan-300 to-violet-400" /></div><div className="mt-3 flex justify-between text-xs text-blue-200"><span>2 of 3 milestones</span><span>66% complete</span></div></div>
+            <div className="mt-5 space-y-3">{["Discovery approved", "Design system delivered", "Final handoff pending"].map((item, index) => <div key={item} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3"><span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${index < 2 ? "bg-emerald-100 text-emerald-700" : "bg-white text-slate-400 ring-1 ring-slate-200"}`}>{index < 2 ? "✓" : index + 1}</span><span className="text-sm font-semibold text-slate-700">{item}</span><span className="ml-auto text-xs text-slate-400">{index < 2 ? "Done" : "Waiting"}</span></div>)}</div>
           </div>
         </div>
       </section>
 
-      {/* Features */}
-      <section className="py-20 border-t border-gray-800/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <h2 className="text-3xl font-bold text-center mb-4">
-            Why SurveyDeal?
-          </h2>
-          <p className="text-center text-gray-400 mb-12 max-w-xl mx-auto">
-            Built for the memecoin era. Buy, sell, and trade any token with full escrow protection.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {FEATURES.map((f) => (
-              <div
-                key={f.title}
-                className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6 hover:border-gray-700 transition"
-              >
-                <span className="text-3xl">{f.icon}</span>
-                <h3 className="text-lg font-semibold mt-4">{f.title}</h3>
-                <p className="text-gray-400 text-sm mt-2">{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <section className="relative z-10 border-y border-slate-200 bg-white/75 py-6"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-8 gap-y-3 px-5 lg:justify-between lg:px-8"><p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Available on leading networks</p>{CHAINS.map(([name, icon, color]) => <span key={name} className="flex items-center gap-2 text-sm font-bold text-slate-600"><span style={{ color }} className="text-lg">{icon}</span>{name}</span>)}</div></section>
 
-      {/* How It Works */}
-      <section className="py-20 border-t border-gray-800/50 bg-gray-900/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {[
-              { step: "1", title: "Connect Wallet", desc: "Link your wallet on any supported chain" },
-              { step: "2", title: "Create Escrow", desc: "Set token, amount, milestones, and counterpart" },
-              { step: "3", title: "Fund Escrow", desc: "Send tokens to the escrow deposit address" },
-              { step: "4", title: "Deliver & Approve", desc: "Seller delivers, buyer approves milestones" },
-              { step: "5", title: "Funds Released", desc: "Smart contract auto-releases to seller" },
-            ].map((s, i) => (
-              <div key={s.step} className="text-center">
-                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-lg font-bold mx-auto mb-3">
-                  {s.step}
-                </div>
-                <h4 className="font-semibold text-sm">{s.title}</h4>
-                <p className="text-xs text-gray-400 mt-1">{s.desc}</p>
-                {i < 4 && <div className="hidden md:block text-gray-600 text-2xl mt-3">→</div>}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <section className="relative z-10 mx-auto max-w-7xl px-5 py-20 lg:px-8"><div className="max-w-2xl"><p className="text-sm font-black uppercase tracking-[0.18em] text-cyan-700">Why SurveyDeal</p><h2 className="mt-3 text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">A better way to make a deal.</h2></div><div className="mt-12 grid gap-5 md:grid-cols-3">{FEATURES.map((feature) => <article key={feature.number} className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm transition hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-900/10"><span className="text-sm font-black text-cyan-600">{feature.number}</span><h3 className="mt-12 text-xl font-black">{feature.title}</h3><p className="mt-3 leading-7 text-slate-500">{feature.text}</p></article>)}</div></section>
 
-      {/* CTA */}
-      <section className="py-20 border-t border-gray-800/50">
-        <div className="max-w-3xl mx-auto text-center px-4">
-          <h2 className="text-4xl font-bold">
-            Ready to Trade Safely?
-          </h2>
-          <p className="text-gray-400 mt-4 mb-8">
-            Create your first escrow in under 2 minutes. No sign-up required — just connect your wallet.
-          </p>
-          <Link
-            href="/escrow/create"
-            className="inline-block bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold px-10 py-4 rounded-xl transition text-lg"
-          >
-            Launch App →
-          </Link>
-        </div>
-      </section>
+      <section className="relative z-10 bg-slate-950 py-20 text-white"><div className="mx-auto grid max-w-7xl gap-10 px-5 lg:grid-cols-[.9fr_1.1fr] lg:px-8"><div><p className="text-sm font-black uppercase tracking-[0.18em] text-cyan-300">Payment rails</p><h2 className="mt-3 text-4xl font-black tracking-tight">Pay using the wallet your admin configures.</h2><p className="mt-5 max-w-xl leading-7 text-slate-300">When payment wallets are published, users can copy the correct address for the selected coin and network. Always verify the network before sending funds.</p><Link href="/escrow/create" className="mt-7 inline-flex rounded-xl bg-white px-5 py-3 font-bold text-slate-950 transition hover:bg-cyan-100">Create a protected deal →</Link></div><div className="rounded-3xl border border-white/10 bg-white/5 p-5 sm:p-7"><div className="flex items-center justify-between"><h3 className="text-lg font-black">Available payment wallets</h3><span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-300">Admin managed</span></div>{wallets.length === 0 ? <div className="mt-6 rounded-2xl border border-dashed border-white/15 p-8 text-center text-sm text-slate-400">Payment instructions will appear here when an administrator publishes a wallet.</div> : <div className="mt-5 space-y-3">{wallets.slice(0, 5).map((wallet) => <div key={wallet.id} className="rounded-2xl bg-white/10 p-4"><div className="flex items-center justify-between"><div><p className="font-black">{wallet.symbol} <span className="font-medium text-slate-400">on {wallet.network}</span></p><p className="mt-1 text-xs text-slate-400">{wallet.label || "Official payment wallet"}</p></div><button onClick={() => navigator.clipboard?.writeText(wallet.address)} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-bold text-cyan-200 hover:bg-white/20">Copy</button></div><p className="mt-3 break-all rounded-xl bg-black/20 px-3 py-2 font-mono text-xs text-slate-300">{shorten(wallet.address)}</p>{wallet.instructions && <p className="mt-2 text-xs leading-5 text-slate-400">{wallet.instructions}</p>}</div>)}</div>}</div></div></section>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-800/50 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between text-sm text-gray-500">
-          <p>© 2024 SurveyDeal. Decentralized Escrow Protocol.</p>
-          <div className="flex gap-4">
-            <a href="https://github.com/gorefilip20/surveydeal" target="_blank" className="hover:text-white transition">
-              GitHub
-            </a>
-            <Link href="/admin" className="hover:text-white transition">
-              Admin
-            </Link>
-          </div>
-        </div>
-      </footer>
-    </div>
+      <section className="relative z-10 mx-auto max-w-4xl px-5 py-20 text-center lg:px-8"><h2 className="text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">Make your next deal easier to trust.</h2><p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-600">Create a clear agreement, protect the payment, and give every participant a shared source of truth.</p><Link href="/escrow/create" className="mt-8 inline-flex rounded-2xl bg-slate-950 px-7 py-4 font-extrabold text-white shadow-xl transition hover:bg-cyan-700">Launch SurveyDeal Escrow →</Link></section>
+
+      <footer className="relative z-10 border-t border-slate-200 bg-white py-7"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 text-sm text-slate-500 lg:px-8"><p>© 2026 SurveyDeal Escrow. Built for clearer digital deals.</p><div className="flex gap-5"><Link href="/dashboard" className="hover:text-slate-950">Dashboard</Link><Link href="/admin" className="hover:text-slate-950">Admin</Link><Link href="/escrow/create" className="font-bold text-cyan-700">Create escrow</Link></div></div></footer>
+    </main>
   );
 }
