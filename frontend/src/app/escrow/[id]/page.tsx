@@ -34,6 +34,7 @@ export default function EscrowDetailPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [paymentWallets, setPaymentWallets] = useState<Array<{ id: string; symbol: string; network: string; address: string; label?: string; instructions?: string; isActive: boolean }>>([]);
 
   useEffect(() => {
     const stored = localStorage.getItem("user_token") || localStorage.getItem("admin_token");
@@ -63,6 +64,13 @@ export default function EscrowDetailPage() {
   useEffect(() => {
     loadEscrow();
   }, [loadEscrow]);
+
+  useEffect(() => {
+    fetch(`${API}/payment-wallets`)
+      .then((response) => response.ok ? response.json() : { wallets: [] })
+      .then((data) => setPaymentWallets(Array.isArray(data.wallets) ? data.wallets : []))
+      .catch(() => setPaymentWallets([]));
+  }, []);
 
   // Admin approve milestone
   const approveMilestone = async (milestoneIndex: number, force = false) => {
@@ -442,6 +450,26 @@ export default function EscrowDetailPage() {
                     >
                       📋 Copy Address
                     </button>
+                    {paymentWallets.length > 0 && (
+                      <div className="mt-5 border-t border-gray-800 pt-5">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Official payment wallets</p>
+                        <p className="mt-1 text-xs leading-5 text-gray-500">Use these only when the payment instructions for your deal specify an admin-managed wallet. Always match the coin and network before sending.</p>
+                        <div className="mt-3 space-y-2">
+                          {paymentWallets.map((wallet) => (
+                            <div key={wallet.id} className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-white">{wallet.symbol} · {wallet.network}</p>
+                                  <p className="mt-1 break-all font-mono text-xs text-gray-400">{wallet.address}</p>
+                                </div>
+                                <button onClick={() => navigator.clipboard.writeText(wallet.address)} className="shrink-0 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500">Copy</button>
+                              </div>
+                              {wallet.instructions && <p className="mt-2 text-xs leading-5 text-gray-400">{wallet.instructions}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <p className="text-sm text-gray-400">Deposit wallet not yet generated</p>
