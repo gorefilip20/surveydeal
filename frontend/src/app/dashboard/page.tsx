@@ -201,12 +201,6 @@ export default function DashboardPage() {
             >
               + New Escrow
             </a>
-            <a
-              href="/admin"
-              className="text-sm text-gray-400 hover:text-white transition"
-            >
-              Admin
-            </a>
           </div>
         </div>
       </header>

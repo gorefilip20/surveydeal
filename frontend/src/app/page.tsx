@@ -51,7 +51,6 @@ export default function LandingPage() {
           </Link>
           <div className="flex items-center gap-3 sm:gap-6">
             <Link href="/dashboard" className="hidden text-sm font-semibold text-slate-600 transition hover:text-slate-950 sm:inline">Dashboard</Link>
-            <Link href="/admin" className="hidden text-sm font-semibold text-slate-600 transition hover:text-slate-950 sm:inline">Admin</Link>
             <Link href="/escrow/create" className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:bg-cyan-700">Create escrow</Link>
           </div>
         </div>
@@ -87,7 +86,7 @@ export default function LandingPage() {
 
       <section className="relative z-10 mx-auto max-w-4xl px-5 py-20 text-center lg:px-8"><h2 className="text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">Make your next deal easier to trust.</h2><p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-600">Create a clear agreement, protect the payment, and give every participant a shared source of truth.</p><Link href="/escrow/create" className="mt-8 inline-flex rounded-2xl bg-slate-950 px-7 py-4 font-extrabold text-white shadow-xl transition hover:bg-cyan-700">Launch SurveyDeal Escrow →</Link></section>
 
-      <footer className="relative z-10 border-t border-slate-200 bg-white py-7"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 text-sm text-slate-500 lg:px-8"><p>© 2026 SurveyDeal Escrow. Built for clearer digital deals.</p><div className="flex gap-5"><Link href="/dashboard" className="hover:text-slate-950">Dashboard</Link><Link href="/admin" className="hover:text-slate-950">Admin</Link><Link href="/escrow/create" className="font-bold text-cyan-700">Create escrow</Link></div></div></footer>
+      <footer className="relative z-10 border-t border-slate-200 bg-white py-7"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 text-sm text-slate-500 lg:px-8"><p>© 2026 SurveyDeal Escrow. Built for clearer digital deals.</p><div className="flex gap-5"><Link href="/dashboard" className="hover:text-slate-950">Dashboard</Link><Link href="/escrow/create" className="font-bold text-cyan-700">Create escrow</Link></div></div></footer>
     </main>
   );
 }
