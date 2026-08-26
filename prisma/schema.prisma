@@ -280,6 +280,23 @@ model ProtocolConfig {
   updatedAt   DateTime @updatedAt
 }
 
+model PaymentWallet {
+  id           String   @id @default(cuid())
+  symbol       String
+  network      String
+  address      String
+  label        String?
+  instructions String?
+  isActive     Boolean  @default(true)
+  updatedBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([network, address])
+  @@index([isActive])
+  @@index([network, symbol])
+}
+
 // ─── CHAT SYSTEM ────────────────────────────────────
 
 enum ChatRoomStatus {

@@ -16,28 +16,6 @@ const router = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:5000";
-const PAYMENT_WALLETS_KEY = "payment_wallets";
-
-type PaymentWallet = {
-  id: string;
-  symbol: string;
-  network: string;
-  address: string;
-  label?: string;
-  instructions?: string;
-  isActive: boolean;
-};
-
-async function readPaymentWallets(): Promise<PaymentWallet[]> {
-  const config = await prisma.protocolConfig.findUnique({ where: { key: PAYMENT_WALLETS_KEY } });
-  if (!config?.value) return [];
-  try {
-    const parsed = JSON.parse(config.value);
-    return Array.isArray(parsed) ? parsed.filter((wallet) => wallet?.address && wallet?.symbol && wallet?.network) : [];
-  } catch {
-    return [];
-  }
-}
 
 // ── Auth Middleware (user-level) ────────────────────────────
 
@@ -742,8 +720,11 @@ router.post("/escrows/:id/state", userAuth, async (req: AuthRequest, res: Respon
 
 router.get("/payment-wallets", async (_req: Request, res: Response) => {
   try {
-    const wallets = await readPaymentWallets();
-    res.json({ wallets: wallets.filter((wallet) => wallet.isActive !== false) });
+    const wallets = await prisma.paymentWallet.findMany({
+      where: { isActive: true },
+      orderBy: [{ network: "asc" }, { symbol: "asc" }],
+    });
+    res.json({ wallets });
   } catch {
     res.status(500).json({ error: "Failed to fetch payment wallets" });
   }

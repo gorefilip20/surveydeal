@@ -26,7 +26,7 @@ The current implementation adds a public payment-wallet section driven by admin 
 
 ### 3. Admin-editable payment wallets
 
-The admin dashboard now has a **Payment Wallets** section. An administrator can add any coin/network combination, enter the address, add a label and instructions, toggle visibility, remove entries, and publish the list. The backend stores the configuration in the existing `ProtocolConfig` model under the `payment_wallets` key, exposes it through a protected admin endpoint, and exposes only active wallets through the public endpoint.
+The admin dashboard now has a **Payment Wallets** section. An administrator can add any coin/network combination, enter the address, add a label and instructions, toggle visibility, remove entries, and publish the list. The backend stores each wallet as a first-class `PaymentWallet` row with indexed network/address fields, exposes it through a protected admin endpoint, and exposes only active wallets through the public endpoint. The migration also backfills valid records from the former `ProtocolConfig` JSON representation.
 
 The recommended operating policy is to require two-person approval for changing a production wallet, keep an immutable audit log, display the last-published timestamp, and require a confirmation phrase before replacing an address. Wallet addresses should be treated as public configuration, while private keys must never be stored in this feature or returned by any endpoint.
 
@@ -58,7 +58,7 @@ The recommended operating policy is to require two-person approval for changing 
 | Network mismatch is a blocking warning | Show `USDC on Base` and `USDC on Ethereum` as different payment options |
 | Native and token assets differ | Store token contract address and decimals for ERC-20-style assets |
 | Solana and TRON need separate adapters | Do not expose them as fully operational merely because their names appear in a selector |
-| Addresses are public; keys are secret | Never place private keys in ProtocolConfig or public responses |
+| Addresses are public; keys are secret | Never place private keys in PaymentWallet, ProtocolConfig, or public responses |
 | Changes need an audit trail | Record who changed what, when, and the old/new address fingerprints |
 | User payment is not proof of escrow funding | Confirm on-chain transfer and required confirmations before changing state |
 

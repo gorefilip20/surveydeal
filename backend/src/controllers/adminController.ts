@@ -52,7 +52,6 @@ function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const ADMIN_WALLET = process.env.ADMIN_WALLET?.toLowerCase();
-const PAYMENT_WALLETS_KEY = "payment_wallets";
 
 router.post("/auth/simple-login", async (req: Request, res: Response) => {
   try {
@@ -719,9 +718,8 @@ router.patch("/users/:id/status", authMiddleware, async (req: AuthRequest, res: 
 
 router.get("/payment-wallets", authMiddleware, async (_req: AuthRequest, res: Response) => {
   try {
-    const config = await prisma.protocolConfig.findUnique({ where: { key: PAYMENT_WALLETS_KEY } });
-    const wallets = config?.value ? JSON.parse(config.value) : [];
-    res.json({ wallets: Array.isArray(wallets) ? wallets : [] });
+    const wallets = await prisma.paymentWallet.findMany({ orderBy: [{ network: "asc" }, { symbol: "asc" }] });
+    res.json({ wallets });
   } catch {
     res.status(500).json({ error: "Failed to fetch payment wallet settings" });
   }
@@ -735,34 +733,34 @@ router.put("/payment-wallets", authMiddleware, async (req: AuthRequest, res: Res
       return;
     }
 
-    const wallets = input.map((wallet: any, index: number) => ({
-      id: String(wallet.id || `payment-wallet-${Date.now()}-${index}`),
+    const wallets = input.map((wallet: any) => ({
+      id: String(wallet.id || ""),
       symbol: String(wallet.symbol || "").trim().toUpperCase(),
       network: String(wallet.network || "").trim().toUpperCase(),
       address: String(wallet.address || "").trim(),
-      label: String(wallet.label || "").trim(),
-      instructions: String(wallet.instructions || "").trim(),
+      label: String(wallet.label || "").trim() || null,
+      instructions: String(wallet.instructions || "").trim() || null,
       isActive: wallet.isActive !== false,
+      updatedBy: req.adminId!,
     }));
 
     if (wallets.some((wallet) => !wallet.symbol || !wallet.network || !wallet.address)) {
       res.status(400).json({ error: "Each wallet requires a coin symbol, network, and address" });
       return;
     }
+    if (new Set(wallets.map((wallet) => `${wallet.network}:${wallet.address.toLowerCase()}`)).size !== wallets.length) {
+      res.status(400).json({ error: "Duplicate network and address combinations are not allowed" });
+      return;
+    }
 
-    const config = await prisma.protocolConfig.upsert({
-      where: { key: PAYMENT_WALLETS_KEY },
-      update: { value: JSON.stringify(wallets), updatedBy: req.adminId },
-      create: {
-        key: PAYMENT_WALLETS_KEY,
-        value: JSON.stringify(wallets),
-        description: "Public payment and deposit wallet addresses",
-        updatedBy: req.adminId,
-      },
+    const saved = await prisma.$transaction(async (tx) => {
+      await tx.paymentWallet.deleteMany();
+      if (wallets.length > 0) await tx.paymentWallet.createMany({ data: wallets });
+      return tx.paymentWallet.findMany({ orderBy: [{ network: "asc" }, { symbol: "asc" }] });
     });
 
-    await auditLog(req.adminId!, "UPDATE_PAYMENT_WALLETS", "protocol_config", config.id, { count: wallets.length }, req.ip);
-    res.json({ wallets });
+    await auditLog(req.adminId!, "UPDATE_PAYMENT_WALLETS", "payment_wallets", "all", { count: saved.length }, req.ip);
+    res.json({ wallets: saved });
   } catch (err) {
     console.error("[PAYMENT WALLET SETTINGS]", err);
     res.status(500).json({ error: "Failed to save payment wallet settings" });
