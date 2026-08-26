@@ -192,7 +192,7 @@ export async function startBlockchainListener(): Promise<void> {
   isRunning = true;
   console.log("[MULTI-CHAIN] Starting multi-chain deposit listener...");
   console.log(`[MULTI-CHAIN] Monitoring chains: ${Object.keys(CHAIN_RPC_URLS).join(", ")}`);
-  console.log(`[MULTI-CHAIN] Poll interval: ${poll_INTERVAL / 1000}s`);
+  console.log(`[MULTI-CHAIN] Poll interval: ${POLL_INTERVAL / 1000}s`);
 
   // Start the listener loop (non-blocking)
   listenerLoop().catch((err) => {

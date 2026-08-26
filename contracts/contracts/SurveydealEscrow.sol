@@ -68,6 +68,9 @@ contract SurveydealEscrow is AccessControl, ReentrancyGuard, Pausable {
     mapping(uint256 => mapping(uint256 => Milestone)) public milestones;
     mapping(address => bool) public blacklistedTokens;
     mapping(address => bool) public featuredTokens;
+    mapping(uint256 => mapping(uint256 => uint256)) public consensusBuyerBasisPoints;
+    mapping(uint256 => mapping(uint256 => address)) public consensusFirstVoter;
+    mapping(uint256 => mapping(uint256 => bool)) public consensusVoteExists;
 
     event EscrowCreated(
         uint256 indexed escrowId,
@@ -83,6 +86,7 @@ contract SurveydealEscrow is AccessControl, ReentrancyGuard, Pausable {
     event MilestoneApproved(uint256 indexed escrowId, uint256 milestoneIndex);
     event FundsReleased(uint256 indexed escrowId, uint256 milestoneIndex, uint256 amount);
     event DisputeInitiated(uint256 indexed escrowId, uint256 milestoneIndex, address initiator);
+    event DisputeConsensusSubmitted(uint256 indexed escrowId, uint256 indexed milestoneIndex, address indexed voter, uint256 buyerBasisPoints);
     event DisputeResolved(
         uint256 indexed escrowId,
         uint256 milestoneIndex,
@@ -113,6 +117,7 @@ contract SurveydealEscrow is AccessControl, ReentrancyGuard, Pausable {
     error NoLockedModeArbiter();
     error CannotSelfEscrow();
     error InsufficientFunding();
+    error ConsensusVoteMismatch();
 
     modifier onlyBuyer(uint256 escrowId) {
         if (msg.sender != escrows[escrowId].buyer) revert NotBuyer();
@@ -362,14 +367,26 @@ contract SurveydealEscrow is AccessControl, ReentrancyGuard, Pausable {
         if (!m.disputed) revert MilestoneNotDisputed();
         if (m.released) revert MilestoneAlreadyReleased();
 
+        if (buyerBasisPoints > 10000) revert InvalidAmount();
+
         if (e.mode == EscrowMode.Locked) {
             if (msg.sender != e.buyer && msg.sender != e.seller) revert NotParticipant();
-        } else {
-            if (msg.sender != e.buyer && msg.sender != e.seller && msg.sender != e.arbiter)
-                revert NotParticipant();
+            if (!consensusVoteExists[escrowId][milestoneIndex]) {
+                consensusVoteExists[escrowId][milestoneIndex] = true;
+                consensusBuyerBasisPoints[escrowId][milestoneIndex] = buyerBasisPoints;
+                consensusFirstVoter[escrowId][milestoneIndex] = msg.sender;
+                emit DisputeConsensusSubmitted(escrowId, milestoneIndex, msg.sender, buyerBasisPoints);
+                return;
+            }
+            if (consensusFirstVoter[escrowId][milestoneIndex] == msg.sender || consensusBuyerBasisPoints[escrowId][milestoneIndex] != buyerBasisPoints) {
+                revert ConsensusVoteMismatch();
+            }
+            delete consensusVoteExists[escrowId][milestoneIndex];
+            delete consensusBuyerBasisPoints[escrowId][milestoneIndex];
+            delete consensusFirstVoter[escrowId][milestoneIndex];
+        } else if (msg.sender != e.buyer && msg.sender != e.seller && msg.sender != e.arbiter) {
+            revert NotParticipant();
         }
-
-        if (buyerBasisPoints > 10000) revert InvalidAmount();
 
         _splitMilestoneFunds(escrowId, milestoneIndex, buyerBasisPoints);
     }

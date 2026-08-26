@@ -138,7 +138,7 @@ router.get("/rooms", authMiddleware, async (req: AuthRequest, res: Response) => 
 router.get("/rooms/:roomId/messages", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const room = await prisma.chatRoom.findUnique({
-      where: { id: req.params.roomId },
+      where: { id: String(req.params.roomId) },
     });
 
     if (!room) {
@@ -153,7 +153,7 @@ router.get("/rooms/:roomId/messages", authMiddleware, async (req: AuthRequest, r
     }
 
     const messages = await prisma.chatMessage.findMany({
-      where: { roomId: req.params.roomId },
+      where: { roomId: String(req.params.roomId) },
       include: {
         sender: {
           select: { id: true, displayName: true, isAdmin: true, walletAddress: true },
@@ -165,7 +165,7 @@ router.get("/rooms/:roomId/messages", authMiddleware, async (req: AuthRequest, r
     // Mark messages as read
     await prisma.chatMessage.updateMany({
       where: {
-        roomId: req.params.roomId,
+        roomId: String(req.params.roomId),
         senderId: { not: req.userId },
         read: false,
       },
@@ -191,7 +191,7 @@ router.post("/rooms/:roomId/messages", authMiddleware, async (req: AuthRequest, 
     }
 
     const room = await prisma.chatRoom.findUnique({
-      where: { id: req.params.roomId },
+      where: { id: String(req.params.roomId) },
     });
 
     if (!room) {
@@ -213,7 +213,7 @@ router.post("/rooms/:roomId/messages", authMiddleware, async (req: AuthRequest, 
 
     const message = await prisma.chatMessage.create({
       data: {
-        roomId: req.params.roomId,
+        roomId: String(req.params.roomId),
         senderId: req.userId!,
         content: content.trim(),
       },
@@ -226,7 +226,7 @@ router.post("/rooms/:roomId/messages", authMiddleware, async (req: AuthRequest, 
 
     // Update room's updatedAt
     await prisma.chatRoom.update({
-      where: { id: req.params.roomId },
+      where: { id: String(req.params.roomId) },
       data: { updatedAt: new Date() },
     });
 
@@ -262,7 +262,7 @@ router.get("/admin/rooms", adminMiddleware, async (req: AuthRequest, res: Respon
             take: 1,
             include: { sender: { select: { id: true, displayName: true, isAdmin: true } } },
           },
-          _count: { select: { messages: true, unreadMessages: true } },
+          _count: { select: { messages: true } },
         },
         orderBy: { updatedAt: "desc" },
         skip: (pageNum - 1) * limitNum,
@@ -292,7 +292,7 @@ router.get("/admin/rooms", adminMiddleware, async (req: AuthRequest, res: Respon
 router.patch("/admin/rooms/:roomId/close", adminMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const room = await prisma.chatRoom.update({
-      where: { id: req.params.roomId },
+      where: { id: String(req.params.roomId) },
       data: { status: "CLOSED", closedAt: new Date(), closedBy: req.userId },
     });
     res.json(room);
@@ -308,7 +308,7 @@ router.patch("/admin/rooms/:roomId/close", adminMiddleware, async (req: AuthRequ
 router.patch("/admin/rooms/:roomId/escalate", adminMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const room = await prisma.chatRoom.update({
-      where: { id: req.params.roomId },
+      where: { id: String(req.params.roomId) },
       data: { status: "ESCALATED" },
     });
     res.json(room);

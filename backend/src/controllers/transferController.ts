@@ -200,7 +200,7 @@ router.get("/transfers", adminAuth, async (req: AuthRequest, res: Response) => {
 router.get("/transfers/:id/proof", adminAuth, async (req: AuthRequest, res: Response) => {
   try {
     const transfer = await prisma.adminTransfer.findUnique({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       include: {
         admin: { select: { id: true, displayName: true, walletAddress: true } },
       },
@@ -262,7 +262,7 @@ router.get("/transfers/:id/proof", adminAuth, async (req: AuthRequest, res: Resp
 router.get("/transfers/:id/receipt", adminAuth, async (req: AuthRequest, res: Response) => {
   try {
     const transfer = await prisma.adminTransfer.findUnique({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       include: {
         admin: { select: { displayName: true, walletAddress: true } },
       },

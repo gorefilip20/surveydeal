@@ -49,13 +49,17 @@ function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
 //  ADMIN AUTH ENDPOINTS
 // ══════════════════════════════════════════════════════════════
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@surveydeal.io";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "SurveyDeal@2024";
-const ADMIN_WALLET = "0xf39Fd6e51aad88F6F4ce6aB8827279cFfFb92266";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const ADMIN_WALLET = process.env.ADMIN_WALLET?.toLowerCase();
 
 router.post("/auth/simple-login", async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
+    if (!ADMIN_EMAIL || !ADMIN_PASSWORD || !ADMIN_WALLET) {
+      res.status(503).json({ error: "Admin authentication is not configured" });
+      return;
+    }
     if (!email || !password) {
       res.status(400).json({ error: "Email and password are required" });
       return;
@@ -110,6 +114,11 @@ router.post("/auth/simple-login", async (req: Request, res: Response) => {
 router.post("/auth/login", async (req: Request, res: Response) => {
   try {
     const { walletAddress, signature, message } = req.body;
+
+    if (!ADMIN_WALLET) {
+      res.status(503).json({ error: "Admin authentication is not configured" });
+      return;
+    }
 
     const recoveredAddress = ethers.verifyMessage(message, signature);
     if (recoveredAddress.toLowerCase() !== walletAddress.toLowerCase()) {
@@ -327,7 +336,7 @@ router.get("/user-assets", authMiddleware, async (req: AuthRequest, res: Respons
 router.get("/users/:id/wallets", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const wallets = await prisma.userWallet.findMany({
-      where: { userId: req.params.id },
+      where: { userId: String(req.params.id) },
       orderBy: [{ isPreferred: "desc" }, { createdAt: "desc" }],
     });
     res.json(wallets);
@@ -346,7 +355,7 @@ router.post("/users/:id/wallets", authMiddleware, async (req: AuthRequest, res: 
 
     const wallet = await prisma.userWallet.create({
       data: {
-        userId: req.params.id,
+        userId: String(req.params.id),
         address: address.toLowerCase(),
         network: network as ChainNetwork,
         label,
@@ -369,7 +378,7 @@ router.patch("/users/:userId/wallets/:walletId", authMiddleware, async (req: Aut
   try {
     const { isPreferred, label } = req.body;
     const wallet = await prisma.userWallet.update({
-      where: { id: req.params.walletId },
+      where: { id: String(req.params.walletId) },
       data: {
         ...(isPreferred !== undefined && { isPreferred }),
         ...(label !== undefined && { label }),
@@ -383,8 +392,8 @@ router.patch("/users/:userId/wallets/:walletId", authMiddleware, async (req: Aut
 
 router.delete("/users/:userId/wallets/:walletId", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    await prisma.userWallet.delete({ where: { id: req.params.walletId } });
-    await auditLog(req.adminId!, "REMOVE_USER_WALLET", "wallet", req.params.walletId, {}, req.ip);
+    await prisma.userWallet.delete({ where: { id: String(req.params.walletId) } });
+    await auditLog(req.adminId!, "REMOVE_USER_WALLET", "wallet", String(req.params.walletId), {}, req.ip);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to delete wallet" });
@@ -397,8 +406,8 @@ router.delete("/users/:userId/wallets/:walletId", authMiddleware, async (req: Au
 
 router.post("/escrows/:id/approve-milestone/:milestoneIndex", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const escrowId = req.params.id;
-    const milestoneIndex = parseInt(req.params.milestoneIndex);
+    const escrowId = String(req.params.id);
+    const milestoneIndex = parseInt(String(req.params.milestoneIndex));
 
     const escrow = await prisma.escrow.findUnique({
       where: { id: escrowId },
@@ -491,7 +500,7 @@ router.post("/escrows/:id/approve-milestone/:milestoneIndex", authMiddleware, as
 
 router.post("/escrows/:id/approve-all", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const escrowId = req.params.id;
+    const escrowId = String(req.params.id);
 
     const escrow = await prisma.escrow.findUnique({
       where: { id: escrowId },
@@ -588,7 +597,7 @@ router.get("/escrows", authMiddleware, async (req: AuthRequest, res: Response) =
 router.get("/escrows/:id", authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const escrow = await prisma.escrow.findUnique({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       include: {
         buyer: { select: { id: true, walletAddress: true, displayName: true, isFrozen: true, wallets: true } },
         seller: { select: { id: true, walletAddress: true, displayName: true, isFrozen: true, wallets: true } },
@@ -681,7 +690,7 @@ router.patch("/users/:id/status", authMiddleware, async (req: AuthRequest, res: 
       return;
     }
 
-    const targetUser = await prisma.user.findUnique({ where: { id: req.params.id } });
+    const targetUser = await prisma.user.findUnique({ where: { id: String(req.params.id) } });
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;
@@ -692,9 +701,9 @@ router.patch("/users/:id/status", authMiddleware, async (req: AuthRequest, res: 
     }
 
     const isFrozen = status === "FROZEN";
-    await prisma.user.update({ where: { id: req.params.id }, data: { isFrozen } });
+    await prisma.user.update({ where: { id: String(req.params.id) }, data: { isFrozen } });
 
-    await auditLog(req.adminId!, isFrozen ? "FREEZE_USER" : "UNFREEZE_USER", "user", req.params.id, { reason, walletAddress: targetUser.walletAddress }, req.ip);
+    await auditLog(req.adminId!, isFrozen ? "FREEZE_USER" : "UNFREEZE_USER", "user", String(req.params.id), { reason, walletAddress: targetUser.walletAddress }, req.ip);
 
     res.json({ success: true, user: { id: targetUser.id, walletAddress: targetUser.walletAddress, isFrozen } });
   } catch (err: any) {
@@ -738,7 +747,7 @@ async function auditLog(
 ) {
   try {
     await prisma.adminAuditLog.create({
-      data: { adminId, action, entityType, entityId, details, ipAddress },
+      data: { adminId, action, entityType, entityId, details: details as any, ipAddress },
     });
   } catch (err) {
     console.error("[AUDIT LOG ERROR]", err);

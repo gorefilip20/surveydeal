@@ -60,7 +60,7 @@ router.get("/search", async (req: Request, res: Response) => {
     }
 
     const data = await response.json();
-    let pairs = data.pairs || [];
+    let pairs = (data as any).pairs || [];
 
     // Filter by chain if specified
     if (chain) {
@@ -287,7 +287,7 @@ router.get("/trending", async (req: Request, res: Response) => {
     }
 
     const data = await response.json();
-    const tokens = (data.data || []).slice(0, 20).map((t: any) => ({
+    const tokens = ((data as any).data || []).slice(0, 20).map((t: any) => ({
       chainId: t.chainId,
       tokenAddress: t.tokenAddress,
       url: t.url,

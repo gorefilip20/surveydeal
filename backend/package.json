@@ -8,6 +8,7 @@
     "npm": ">=9.0.0"
   },
   "scripts": {
+    "postinstall": "npx prisma generate --schema=../prisma/schema.prisma && node scripts/sync-prisma-client.cjs",
     "dev": "tsx watch src/app.ts",
     "dev:local": "concurrently -k -n hh,prisma,api -c cyan,magenta,green \"npx hardhat node\" \"npm run db:push\" \"npm run dev\"",
     "build": "npm run build:prisma && tsc",

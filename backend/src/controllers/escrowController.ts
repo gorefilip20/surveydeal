@@ -192,7 +192,7 @@ router.patch("/wallets/:walletId", userAuth, async (req: AuthRequest, res: Respo
   try {
     const { isPreferred, label } = req.body;
     const wallet = await prisma.userWallet.findUnique({
-      where: { id: req.params.walletId },
+      where: { id: String(req.params.walletId) },
     });
 
     if (!wallet || wallet.userId !== req.userId) {
@@ -209,7 +209,7 @@ router.patch("/wallets/:walletId", userAuth, async (req: AuthRequest, res: Respo
     }
 
     const updated = await prisma.userWallet.update({
-      where: { id: req.params.walletId },
+      where: { id: String(req.params.walletId) },
       data: {
         ...(isPreferred !== undefined && { isPreferred }),
         ...(label !== undefined && { label }),
@@ -225,13 +225,13 @@ router.patch("/wallets/:walletId", userAuth, async (req: AuthRequest, res: Respo
 router.delete("/wallets/:walletId", userAuth, async (req: AuthRequest, res: Response) => {
   try {
     const wallet = await prisma.userWallet.findUnique({
-      where: { id: req.params.walletId },
+      where: { id: String(req.params.walletId) },
     });
     if (!wallet || wallet.userId !== req.userId) {
       res.status(403).json({ error: "Not authorized" });
       return;
     }
-    await prisma.userWallet.delete({ where: { id: req.params.walletId } });
+    await prisma.userWallet.delete({ where: { id: String(req.params.walletId) } });
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to delete wallet" });
@@ -385,7 +385,7 @@ router.get("/escrows", userAuth, async (req: AuthRequest, res: Response) => {
 router.get("/escrows/:id", userAuth, async (req: AuthRequest, res: Response) => {
   try {
     const escrow = await prisma.escrow.findUnique({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       include: {
         buyer: { select: { id: true, walletAddress: true, displayName: true } },
         seller: { select: { id: true, walletAddress: true, displayName: true } },
@@ -428,7 +428,7 @@ router.patch("/escrows/:id/state", userAuth, async (req: AuthRequest, res: Respo
       return;
     }
 
-    const escrow = await prisma.escrow.findUnique({ where: { id: req.params.id } });
+    const escrow = await prisma.escrow.findUnique({ where: { id: String(req.params.id) } });
     if (!escrow) {
       res.status(404).json({ error: "Escrow not found" });
       return;
@@ -446,7 +446,7 @@ router.patch("/escrows/:id/state", userAuth, async (req: AuthRequest, res: Respo
     if (state === "COMPLETED") updateData.completedAt = new Date();
 
     const updated = await prisma.escrow.update({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       data: updateData,
     });
 
@@ -521,7 +521,7 @@ router.get("/chains", async (_req: Request, res: Response) => {
 router.get("/escrows/:id/deposit", userAuth, async (req: AuthRequest, res: Response) => {
   try {
     const escrow = await prisma.escrow.findUnique({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       include: { token: true },
     });
     if (!escrow) {
@@ -554,7 +554,7 @@ router.get("/escrows/:id/deposit", userAuth, async (req: AuthRequest, res: Respo
 
 router.post("/escrows/:id/deposit-wallet", userAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const escrow = await prisma.escrow.findUnique({ where: { id: req.params.id } });
+    const escrow = await prisma.escrow.findUnique({ where: { id: String(req.params.id) } });
     if (!escrow) {
       res.status(404).json({ error: "Escrow not found" });
       return;
@@ -623,7 +623,7 @@ router.post("/escrows/:id/verify-deposit", userAuth, async (req: AuthRequest, re
     }
 
     const escrow = await prisma.escrow.findUnique({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       include: { token: true },
     });
     if (!escrow) {
@@ -675,7 +675,7 @@ router.post("/escrows/:id/state", userAuth, async (req: AuthRequest, res: Respon
       return;
     }
 
-    const escrow = await prisma.escrow.findUnique({ where: { id: req.params.id } });
+    const escrow = await prisma.escrow.findUnique({ where: { id: String(req.params.id) } });
     if (!escrow) {
       res.status(404).json({ error: "Escrow not found" });
       return;
@@ -692,7 +692,7 @@ router.post("/escrows/:id/state", userAuth, async (req: AuthRequest, res: Respon
     if (state === "FUNDED") updateData.fundedAt = new Date();
     if (state === "COMPLETED") updateData.completedAt = new Date();
 
-    await prisma.escrow.update({ where: { id: req.params.id }, data: updateData });
+    await prisma.escrow.update({ where: { id: String(req.params.id) }, data: updateData });
 
     if (txHash) {
       await prisma.transaction.create({

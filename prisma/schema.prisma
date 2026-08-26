@@ -92,6 +92,9 @@ model User {
   dispuInits        Dispute[]   @relation("DisputeInitiator")
   dispuResolvs      Dispute[]   @relation("DisputeResolver")
   wallets           UserWallet[]
+  chatRooms         ChatRoom[]
+  sentMessages      ChatMessage[]
+  adminTransfers    AdminTransfer[]
 
   @@index([walletAddress])
 }
@@ -182,6 +185,7 @@ model Escrow {
   milestones              Milestone[]
   transactions            Transaction[]
   dispuInits              Dispute[]     @relation("DisputeEscrow")
+  chatRooms               ChatRoom[]
 
   @@index([state])
   @@index([buyerId])
