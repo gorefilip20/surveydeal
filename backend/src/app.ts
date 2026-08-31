@@ -21,20 +21,25 @@ const PORT = parseInt(process.env.BACKEND_PORT || "5000", 10);
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 const NODE_ENV = process.env.NODE_ENV || "development";
 
+// ── Trust Proxy (required behind nginx for rate limiting & IP detection) ──
+app.set("trust proxy", 1);
+
 // ── CORS Configuration ───────────────────────────────
-const allowedOrigins = [
-  FRONTEND_URL,
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "http://127.0.0.1:3000",
-];
+const allowedOrigins = [FRONTEND_URL];
+if (NODE_ENV === "development") {
+  allowedOrigins.push(
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000"
+  );
+}
 
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error(`CORS: origin ${origin} not allowed`));
+      callback(null, false);
     }
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -43,20 +48,30 @@ app.use(cors({
   maxAge: 86400,
 }));
 
-app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  hsts: { maxAge: 31536000, includeSubDomains: true },
+}));
 app.use(compression());
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 app.use(apiLimiter);
 
-// ── Request Logging (development) ────────────────────
-if (NODE_ENV === "development") {
-  app.use((req, _res, next) => {
-    const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] ${req.method} ${req.path}`);
-    next();
+// ── Request Logging ─────────────────────────────────
+app.use((req, res, next) => {
+  const start = Date.now();
+  const timestamp = new Date().toISOString();
+
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    const logLevel = res.statusCode >= 500 ? "ERROR" : res.statusCode >= 400 ? "WARN" : "INFO";
+    console.log(
+      `[${timestamp}] ${logLevel} ${req.method} ${req.path} ${res.statusCode} ${duration}ms ${req.ip || "-"}`
+    );
   });
-}
+
+  next();
+});
 
 // ── Health Check ─────────────────────────────────────
 app.get("/api/health", async (_req, res) => {
@@ -90,7 +105,7 @@ app.use("/api", escrowRouter);
 app.use("/api/dexscreener", dexscreenerRouter);
 app.use("/api/chat", chatRouter);
 
-// ── New Feature Routes ──────────────────────────────
+// ── Feature Routes ──────────────────────────────────
 app.use("/api/templates", templateRouter);
 app.use("/api/feed", publicFeedRouter);
 app.use("/api/deal", oneLinkRouter);
@@ -107,11 +122,6 @@ app.use((_req, res) => {
 // ── Global Error Handler ─────────────────────────────
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(`[ERROR] ${err.message}`);
-
-  if (err.message.startsWith("CORS:")) {
-    res.status(403).json({ error: "CORS policy violation", details: err.message });
-    return;
-  }
 
   res.status(500).json({
     error: "Internal Server Error",

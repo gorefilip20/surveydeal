@@ -1,23 +1,8 @@
 import { Router, Request, Response } from "express";
-import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma";
+import { userAuth, adminAuth, AuthRequest } from "../middleware/auth";
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET!;
-
-interface AuthRequest extends Request {
-  userId?: string;
-}
-
-function userAuth(req: AuthRequest, res: Response, next: Function) {
-  const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) { res.status(401).json({ error: "Missing token" }); return; }
-  try {
-    const payload = jwt.verify(header.slice(7), JWT_SECRET) as { sub: string };
-    req.userId = payload.sub;
-    next();
-  } catch { res.status(401).json({ error: "Invalid token" }); }
-}
 
 const OFFICIAL_TEMPLATES = [
   {
@@ -224,7 +209,7 @@ router.post("/:id/upvote", userAuth, async (req: AuthRequest, res: Response) => 
   } catch { res.status(500).json({ error: "Failed to upvote" }); }
 });
 
-router.post("/seed-official", async (_req: Request, res: Response) => {
+router.post("/seed-official", adminAuth, async (_req: Request, res: Response) => {
   try {
     let admin = await prisma.user.findFirst({ where: { isAdmin: true } });
     if (!admin) {

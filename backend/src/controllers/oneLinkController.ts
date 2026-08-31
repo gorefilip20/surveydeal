@@ -1,24 +1,9 @@
 import { Router, Request, Response } from "express";
 import * as crypto from "crypto";
-import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma";
+import { userAuth, AuthRequest } from "../middleware/auth";
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET!;
-
-interface AuthRequest extends Request {
-  userId?: string;
-}
-
-function userAuth(req: AuthRequest, res: Response, next: Function) {
-  const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) { res.status(401).json({ error: "Missing token" }); return; }
-  try {
-    const payload = jwt.verify(header.slice(7), JWT_SECRET) as { sub: string };
-    req.userId = payload.sub;
-    next();
-  } catch { res.status(401).json({ error: "Invalid token" }); }
-}
 
 router.post("/generate", userAuth, async (req: AuthRequest, res: Response) => {
   try {

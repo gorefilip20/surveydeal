@@ -1,6 +1,9 @@
 import { Router, Request, Response } from "express";
+import { apiLimiter } from "../middleware/rateLimiter";
 
 const router = Router();
+
+router.use(apiLimiter);
 
 // ── Cache ────────────────────────────────────────────
 interface CacheEntry {

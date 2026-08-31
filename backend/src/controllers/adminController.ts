@@ -58,12 +58,9 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const ADMIN_WALLET = process.env.ADMIN_WALLET || "0xf39Fd6e51aad88F6F4ce6aB8827279cFfFb92266";
 
-let adminPasswordHash: string | null = null;
-(async () => {
-  if (ADMIN_PASSWORD) {
-    adminPasswordHash = await bcrypt.hash(ADMIN_PASSWORD, 12);
-  }
-})();
+const adminPasswordHashPromise: Promise<string | null> = ADMIN_PASSWORD
+  ? bcrypt.hash(ADMIN_PASSWORD, 12)
+  : Promise.resolve(null);
 
 router.post("/auth/simple-login", authLimiter, validate(adminLoginSchema), async (req: Request, res: Response) => {
   try {
@@ -72,6 +69,7 @@ router.post("/auth/simple-login", authLimiter, validate(adminLoginSchema), async
       res.status(400).json({ error: "Email and password are required" });
       return;
     }
+    const adminPasswordHash = await adminPasswordHashPromise;
     if (!ADMIN_EMAIL || !adminPasswordHash) {
       res.status(500).json({ error: "Admin credentials not configured" });
       return;

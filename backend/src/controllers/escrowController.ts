@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
-import jwt from "jsonwebtoken";
 import { ethers } from "ethers";
 import * as crypto from "crypto";
+import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma";
 import { EVM_CHAIN_IDS, SUPPORTED_CHAINS } from "../lib/chains";
 import {
@@ -11,11 +11,12 @@ import {
 import { generateDepositWallet } from "../services/walletGenerator";
 import { processRefund } from "../services/refundService";
 import { authLimiter, depositLimiter } from "../middleware/rateLimiter";
+import { userAuth, AuthRequest } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import {
   loginSchema, profileUpdateSchema, createEscrowSchema,
   escrowStateSchema, depositWalletSchema, verifyDepositSchema,
-  disputeSchema, walletAddSchema, chatRoomCreateSchema, chatMessageSchema,
+  disputeSchema, walletAddSchema,
 } from "../middleware/schemas";
 
 const router = Router();
@@ -35,32 +36,6 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   COMPLETED: [],
   REFUNDED: [],
 };
-
-// ── Auth Middleware (user-level) ────────────────────────────
-
-interface AuthRequest extends Request {
-  userId?: string;
-  userWallet?: string;
-}
-
-function userAuth(req: AuthRequest, res: Response, next: Function) {
-  const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Missing authorization token" });
-    return;
-  }
-  try {
-    const payload = jwt.verify(header.slice(7), JWT_SECRET!) as {
-      sub: string;
-      wallet: string;
-    };
-    req.userId = payload.sub;
-    req.userWallet = payload.wallet;
-    next();
-  } catch {
-    res.status(401).json({ error: "Invalid or expired token" });
-  }
-}
 
 // ══════════════════════════════════════════════════════════════
 //  AUTH ENDPOINTS
@@ -185,7 +160,7 @@ router.post("/auth/refresh", userAuth, async (req: AuthRequest, res: Response) =
   }
 });
 
-router.patch("/auth/profile", userAuth, async (req: AuthRequest, res: Response) => {
+router.patch("/auth/profile", userAuth, validate(profileUpdateSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { displayName, email } = req.body;
     const user = await prisma.user.update({

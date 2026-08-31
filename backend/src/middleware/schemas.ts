@@ -90,7 +90,7 @@ export const adminUserStatusSchema = z.object({
 export const chatRoomCreateSchema = z.object({
   escrowId: z.string().optional(),
   subject: z.string().min(1).max(200).optional(),
-  message: z.string().min(1).max(5000).optional(),
+  initialMessage: z.string().min(1).max(5000).optional(),
 });
 
 export const chatMessageSchema = z.object({
