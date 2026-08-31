@@ -9,6 +9,10 @@ import escrowRouter from "./controllers/escrowController";
 import dexscreenerRouter from "./controllers/dexscreenerController";
 import chatRouter from "./controllers/chatController";
 import transferRouter from "./controllers/transferController";
+import templateRouter from "./controllers/templateController";
+import publicFeedRouter from "./controllers/publicFeedController";
+import oneLinkRouter from "./controllers/oneLinkController";
+import userFeaturesRouter from "./controllers/userFeaturesController";
 import { startBlockchainListener, stopBlockchainListener } from "./services/blockchainListener";
 import { apiLimiter } from "./middleware/rateLimiter";
 const app = express();
@@ -34,7 +38,7 @@ app.use(cors({
     }
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-API-Key"],
   credentials: true,
   maxAge: 86400,
 }));
@@ -85,6 +89,12 @@ app.use("/api/admin", transferRouter);
 app.use("/api", escrowRouter);
 app.use("/api/dexscreener", dexscreenerRouter);
 app.use("/api/chat", chatRouter);
+
+// ── New Feature Routes ──────────────────────────────
+app.use("/api/templates", templateRouter);
+app.use("/api/feed", publicFeedRouter);
+app.use("/api/deal", oneLinkRouter);
+app.use("/api/user", userFeaturesRouter);
 
 // ── 404 Handler ──────────────────────────────────────
 app.use((_req, res) => {

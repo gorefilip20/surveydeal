@@ -326,6 +326,13 @@ router.post("/escrows", userAuth, validate(createEscrowSchema), async (req: Auth
       deadline,
       milestones,
       network,
+      category,
+      templateId,
+      referralCode,
+      requiredSignatures,
+      timeLockHours,
+      isInsured,
+      verticalMetadata,
     } = req.body;
 
     if (!sellerWallet || !tokenAddress || !totalAmount || !milestones?.length || !title) {
@@ -378,6 +385,10 @@ router.post("/escrows", userAuth, validate(createEscrowSchema), async (req: Auth
       if (arbiter) arbiterId = arbiter.id;
     }
 
+    let resolvedMode: "LOCKED" | "ARBITER" | "MULTISIG" = "LOCKED";
+    if (mode === 1 || mode === "ARBITER") resolvedMode = "ARBITER";
+    else if (mode === "MULTISIG") resolvedMode = "MULTISIG";
+
     const escrow = await prisma.escrow.create({
       data: {
         onChainId: nextOnChainId,
@@ -391,15 +402,23 @@ router.post("/escrows", userAuth, validate(createEscrowSchema), async (req: Auth
         tokenId: token.id,
         totalAmount: totalAmount.toString(),
         fundedAmount: "0",
-        mode: mode === 1 ? "ARBITER" : "LOCKED",
+        mode: resolvedMode,
         agreementHash,
         agreementText,
         deadline: deadline ? new Date(deadline) : undefined,
+        category: category || "CUSTOM",
+        templateId: templateId || undefined,
+        referralCode: referralCode || undefined,
+        requiredSignatures: resolvedMode === "MULTISIG" ? (requiredSignatures || 2) : 1,
+        timeLockUntil: timeLockHours ? new Date(Date.now() + timeLockHours * 3600000) : undefined,
+        isInsured: isInsured || false,
+        verticalMetadata: verticalMetadata || undefined,
         milestones: {
           create: milestones.map((m: any, i: number) => ({
             index: i,
             description: m.description,
             amount: m.amount.toString(),
+            deliveryDeadline: m.deliveryDeadline ? new Date(m.deliveryDeadline) : undefined,
           })),
         },
       },

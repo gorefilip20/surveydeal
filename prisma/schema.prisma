@@ -16,11 +16,13 @@ enum EscrowState {
   COMPLETED
   DISPUTED
   REFUNDED
+  EXPIRED
 }
 
 enum EscrowMode {
   LOCKED
   ARBITER
+  MULTISIG
 }
 
 enum UserRole {
@@ -39,11 +41,14 @@ enum TransactionType {
   DEPOSIT_WALLET
   WITHDRAWAL
   ADMIN_RELEASE
+  INSURANCE_PREMIUM
+  REFERRAL_PAYOUT
 }
 
 enum FundingMethod {
   WALLET_DIRECT
   DEPOSIT_TRANSFER
+  FIAT_STRIPE
 }
 
 enum TokenStatus {
@@ -70,31 +75,79 @@ enum ChainNetwork {
   FANTOM
 }
 
+enum VerificationTier {
+  ANONYMOUS
+  VERIFIED
+  KYC
+}
+
+enum EscrowCategory {
+  CRYPTO_TRADE
+  FREELANCE
+  REAL_ESTATE
+  DOMAIN_SALE
+  VEHICLE_SALE
+  WHOLESALE
+  PARTNERSHIP
+  INFLUENCER
+  CUSTOM
+}
+
+enum NotificationType {
+  ESCROW_CREATED
+  ESCROW_FUNDED
+  MILESTONE_DELIVERED
+  MILESTONE_APPROVED
+  MILESTONE_RELEASED
+  DISPUTE_OPENED
+  DISPUTE_RESOLVED
+  REFUND_PROCESSED
+  DEAL_COMPLETED
+  DEADLINE_WARNING
+  TRUST_SCORE_UPDATE
+  REFERRAL_EARNED
+  LINK_ACCESSED
+}
+
 // ─── MODELS ─────────────────────────────────────
 
 model User {
-  id              String   @id @default(cuid())
-  walletAddress   String   @unique
+  id              String           @id @default(cuid())
+  walletAddress   String           @unique
   displayName     String?
-  email           String?  @unique
-  role            UserRole @default(BUYER)
-  isAdmin         Boolean  @default(false)
-  isArbiter       Boolean  @default(false)
-  isFrozen        Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  email           String?          @unique
+  phone           String?
+  role            UserRole         @default(BUYER)
+  isAdmin         Boolean          @default(false)
+  isArbiter       Boolean          @default(false)
+  isFrozen        Boolean          @default(false)
+  verificationTier VerificationTier @default(ANONYMOUS)
+  kycVerifiedAt   DateTime?
+  avatarUrl       String?
+  bio             String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
-  buyerEscrows      Escrow[]    @relation("BuyerEscrows")
-  sellerEscrows     Escrow[]    @relation("SellerEscrows")
-  arbiterEscrows    Escrow[]    @relation("ArbiterEscrows")
-  dispuInits        Dispute[]   @relation("DisputeInitiator")
-  dispuResolvs      Dispute[]   @relation("DisputeResolver")
+  buyerEscrows      Escrow[]          @relation("BuyerEscrows")
+  sellerEscrows     Escrow[]          @relation("SellerEscrows")
+  arbiterEscrows    Escrow[]          @relation("ArbiterEscrows")
+  dispuInits        Dispute[]         @relation("DisputeInitiator")
+  dispuResolvs      Dispute[]         @relation("DisputeResolver")
   wallets           UserWallet[]
   chatRooms         ChatRoom[]
   chatMessages      ChatMessage[]
   adminTransfers    AdminTransfer[]
+  trustScore        TrustScore?
+  referralsSent     Referral[]        @relation("ReferralSender")
+  referralsReceived Referral[]        @relation("ReferralReceiver")
+  notifications     Notification[]
+  apiKeys           ApiKey[]
+  multiSigApprovals MultiSigApproval[]
+  disputeEvidence   DisputeEvidence[]
+  templateCreated   EscrowTemplate[]
 
   @@index([walletAddress])
+  @@index([verificationTier])
 }
 
 model UserWallet {
@@ -142,54 +195,86 @@ model Token {
 }
 
 model Escrow {
-  id                      String       @id @default(cuid())
-  onChainId               Int          @unique
+  id                      String         @id @default(cuid())
+  onChainId               Int            @unique
   chainId                 Int
-  network                 ChainNetwork @default(ETHEREUM)
+  network                 ChainNetwork   @default(ETHEREUM)
   title                   String
   description             String?
-  buyer                   User         @relation("BuyerEscrows", fields: [buyerId], references: [id])
+  category                EscrowCategory @default(CRYPTO_TRADE)
+  buyer                   User           @relation("BuyerEscrows", fields: [buyerId], references: [id])
   buyerId                 String
-  seller                  User         @relation("SellerEscrows", fields: [sellerId], references: [id])
+  seller                  User           @relation("SellerEscrows", fields: [sellerId], references: [id])
   sellerId                String
-  arbiter                 User?        @relation("ArbiterEscrows", fields: [arbiterId], references: [id])
+  arbiter                 User?          @relation("ArbiterEscrows", fields: [arbiterId], references: [id])
   arbiterId               String?
-  token                   Token        @relation(fields: [tokenId], references: [id])
+  token                   Token          @relation(fields: [tokenId], references: [id])
   tokenId                 String
   totalAmount             String
   fundedAmount            String
-  releasedAmount          String       @default("0")
-  protocolFeeTotal        String       @default("0")
-  state                   EscrowState  @default(CREATED)
-  mode                    EscrowMode   @default(LOCKED)
+  releasedAmount          String         @default("0")
+  protocolFeeTotal        String         @default("0")
+  state                   EscrowState    @default(CREATED)
+  mode                    EscrowMode     @default(LOCKED)
   fundingMethod           FundingMethod?
   agreementHash           String?
   agreementText           String?
   deadline                DateTime?
   fundedAt                DateTime?
   completedAt             DateTime?
-  adminApproved           Boolean      @default(false)
+  adminApproved           Boolean        @default(false)
   adminApprovedBy         String?
   adminApprovedAt         DateTime?
   adminNotes              String?
   depositWalletAddr       String?
   depositWalletKey        String?
-  depositConfirmed        Boolean      @default(false)
+  depositConfirmed        Boolean        @default(false)
   derivationIndex         Int?
   depositNetwork          String?
-  createdAt               DateTime     @default(now())
-  updatedAt               DateTime     @updatedAt
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+
+  // One-Link Escrow
+  shareToken              String?        @unique
+  isPublicListing         Boolean        @default(false)
+  requiresAuth            Boolean        @default(true)
+
+  // Time-Lock
+  timeLockUntil           DateTime?
+  autoReleaseAt           DateTime?
+
+  // Multi-Sig
+  requiredSignatures      Int            @default(1)
+
+  // Insurance
+  isInsured               Boolean        @default(false)
+  insurancePremium        String?
+  insurancePolicyId       String?
+
+  // Template reference
+  templateId              String?
+  template                EscrowTemplate? @relation(fields: [templateId], references: [id])
+
+  // Referral tracking
+  referralCode            String?
+
+  // Vertical-specific metadata
+  verticalMetadata        Json?
 
   milestones              Milestone[]
   transactions            Transaction[]
-  dispuInits              Dispute[]     @relation("DisputeEscrow")
+  dispuInits              Dispute[]      @relation("DisputeEscrow")
   chatRooms               ChatRoom[]
+  multiSigApprovals       MultiSigApproval[]
 
   @@index([state])
   @@index([buyerId])
   @@index([sellerId])
   @@index([chainId])
   @@index([network])
+  @@index([shareToken])
+  @@index([category])
+  @@index([isPublicListing])
 }
 
 model Milestone {
@@ -205,6 +290,8 @@ model Milestone {
   sellerDelivered       Boolean   @default(false)
   adminApproved         Boolean   @default(false)
   releasedAt            DateTime?
+  deliveryDeadline      DateTime?
+  evidenceUrl           String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -235,23 +322,44 @@ model Transaction {
 }
 
 model Dispute {
-  id              String      @id @default(cuid())
-  escrow          Escrow      @relation("DisputeEscrow", fields: [escrowId], references: [id])
+  id              String            @id @default(cuid())
+  escrow          Escrow            @relation("DisputeEscrow", fields: [escrowId], references: [id])
   escrowId        String
-  milestone       Milestone?  @relation(fields: [milestoneId], references: [id])
+  milestone       Milestone?        @relation(fields: [milestoneId], references: [id])
   milestoneId     String?
-  initiator       User        @relation("DisputeInitiator", fields: [initiatorId], references: [id])
+  initiator       User              @relation("DisputeInitiator", fields: [initiatorId], references: [id])
   initiatorId     String
-  resolver        User?       @relation("DisputeResolver", fields: [resolverId], references: [id])
+  resolver        User?             @relation("DisputeResolver", fields: [resolverId], references: [id])
   resolverId      String?
   reason          String
   evidence        String?
-  outcome         Dispoutcome @default(PENDING)
+  outcome         Dispoutcome       @default(PENDING)
   resolvedAt      DateTime?
-  createdAt       DateTime    @default(now())
+  coolingEndsAt   DateTime?
+  resolutionNotes String?
+  buyerSplit      Int?
+  sellerSplit     Int?
+  createdAt       DateTime          @default(now())
+
+  evidenceFiles   DisputeEvidence[]
 
   @@index([escrowId])
   @@index([outcome])
+}
+
+model DisputeEvidence {
+  id          String   @id @default(cuid())
+  dispute     Dispute  @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  disputeId   String
+  submitter   User     @relation(fields: [submitterId], references: [id])
+  submitterId String
+  fileUrl     String
+  fileType    String
+  description String?
+  hash        String?
+  createdAt   DateTime @default(now())
+
+  @@index([disputeId])
 }
 
 model AdminAuditLog {
@@ -342,5 +450,213 @@ model AdminTransfer {
   @@index([adminId])
   @@index([toAddress])
   @@index([txHash])
+  @@index([createdAt])
+}
+
+// ─── ESCROW TEMPLATES ───────────────────────────────
+
+model EscrowTemplate {
+  id              String         @id @default(cuid())
+  name            String
+  description     String
+  category        EscrowCategory
+  creator         User           @relation(fields: [creatorId], references: [id])
+  creatorId       String
+  isPublic        Boolean        @default(false)
+  isOfficial      Boolean        @default(false)
+  upvotes         Int            @default(0)
+  usageCount      Int            @default(0)
+  milestoneTemplates Json
+  defaultDeadlineDays Int?
+  verticalFields  Json?
+  tags            String[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  escrows         Escrow[]
+
+  @@index([category])
+  @@index([isPublic])
+  @@index([upvotes])
+}
+
+// ─── MULTI-SIG APPROVALS ────────────────────────────
+
+model MultiSigApproval {
+  id          String   @id @default(cuid())
+  escrow      Escrow   @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+  escrowId    String
+  signer      User     @relation(fields: [signerId], references: [id])
+  signerId    String
+  action      String
+  signature   String?
+  approved    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@unique([escrowId, signerId, action])
+  @@index([escrowId])
+}
+
+// ─── TRUST SCORE & REPUTATION ───────────────────────
+
+model TrustScore {
+  id                  String   @id @default(cuid())
+  user                User     @relation(fields: [userId], references: [id])
+  userId              String   @unique
+  score               Int      @default(0)
+  totalDealsCompleted Int      @default(0)
+  totalVolume         String   @default("0")
+  disputeRate         Float    @default(0)
+  avgRating           Float    @default(0)
+  totalRatings        Int      @default(0)
+  onTimeDeliveryRate  Float    @default(0)
+  level               String   @default("NEW")
+  badgeUrls           String[]
+  lastCalculatedAt    DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  ratings             DealRating[]
+
+  @@index([score])
+  @@index([level])
+}
+
+model DealRating {
+  id          String     @id @default(cuid())
+  trustScore  TrustScore @relation(fields: [trustScoreId], references: [id])
+  trustScoreId String
+  escrowId    String
+  raterId     String
+  rating      Int
+  review      String?
+  createdAt   DateTime   @default(now())
+
+  @@unique([escrowId, raterId])
+  @@index([trustScoreId])
+}
+
+// ─── REFERRAL PROGRAM ───────────────────────────────
+
+model Referral {
+  id              String   @id @default(cuid())
+  sender          User     @relation("ReferralSender", fields: [senderId], references: [id])
+  senderId        String
+  receiver        User     @relation("ReferralReceiver", fields: [receiverId], references: [id])
+  receiverId      String
+  referralCode    String
+  escrowId        String?
+  rewardAmount    String   @default("0")
+  rewardPaid      Boolean  @default(false)
+  rewardPaidAt    DateTime?
+  createdAt       DateTime @default(now())
+
+  @@unique([senderId, receiverId])
+  @@index([referralCode])
+  @@index([senderId])
+}
+
+model ReferralCode {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  code        String   @unique
+  totalUses   Int      @default(0)
+  totalEarned String   @default("0")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@index([code])
+}
+
+// ─── NOTIFICATIONS ──────────────────────────────────
+
+model Notification {
+  id          String           @id @default(cuid())
+  user        User             @relation(fields: [userId], references: [id])
+  userId      String
+  type        NotificationType
+  title       String
+  message     String
+  data        Json?
+  read        Boolean          @default(false)
+  emailSent   Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  @@index([userId, read])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model NotificationPreference {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  emailEnabled Boolean @default(true)
+  pushEnabled  Boolean @default(false)
+  dealUpdates  Boolean @default(true)
+  disputeAlerts Boolean @default(true)
+  referralAlerts Boolean @default(true)
+  marketingEmails Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── API KEYS (White-Label / Integration) ───────────
+
+model ApiKey {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  name        String
+  keyHash     String   @unique
+  keyPrefix   String
+  permissions String[]
+  rateLimit   Int      @default(1000)
+  isActive    Boolean  @default(true)
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([keyHash])
+  @@index([userId])
+}
+
+// ─── PUBLIC DEAL FEED ───────────────────────────────
+
+model PublicDeal {
+  id              String         @id @default(cuid())
+  escrowId        String         @unique
+  category        EscrowCategory
+  title           String
+  amountDisplay   String
+  tokenSymbol     String
+  network         ChainNetwork
+  completedAt     DateTime
+  buyerRating     Int?
+  sellerRating    Int?
+  isAnonymized    Boolean        @default(true)
+  buyerDisplay    String?
+  sellerDisplay   String?
+  createdAt       DateTime       @default(now())
+
+  @@index([category])
+  @@index([completedAt])
+  @@index([network])
+}
+
+// ─── SECURITY EVENTS LOG ────────────────────────────
+
+model SecurityEvent {
+  id          String   @id @default(cuid())
+  userId      String?
+  eventType   String
+  severity    String
+  ipAddress   String?
+  userAgent   String?
+  details     Json?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([eventType])
+  @@index([severity])
   @@index([createdAt])
 }

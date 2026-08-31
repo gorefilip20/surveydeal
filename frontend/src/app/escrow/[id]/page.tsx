@@ -18,6 +18,8 @@ import {
   Undo2,
   Send,
   CheckCircle,
+  Share2,
+  Users,
 } from "lucide-react";
 import Nav from "@/components/Nav";
 
@@ -49,6 +51,9 @@ export default function EscrowDetailPage() {
   const [showVerifyInput, setShowVerifyInput] = useState(false);
   const [verifyTxHash, setVerifyTxHash] = useState("");
   const [confirmAction, setConfirmAction] = useState<{ msg: string; fn: () => void } | null>(null);
+  const [shareLink, setShareLink] = useState("");
+  const [shareCopied, setShareCopied] = useState(false);
+  const [multiSigStatus, setMultiSigStatus] = useState<any>(null);
 
   useEffect(() => {
     const stored =
@@ -92,9 +97,74 @@ export default function EscrowDetailPage() {
     setLoading(false);
   }, [token, escrowId]);
 
+  const loadMultiSigStatus = useCallback(async () => {
+    if (!token || !escrowId) return;
+    try {
+      const res = await fetch(`${API}/user/escrows/${escrowId}/multisig/status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMultiSigStatus(data);
+      }
+    } catch {}
+  }, [token, escrowId]);
+
   useEffect(() => {
     loadEscrow();
   }, [loadEscrow]);
+
+  useEffect(() => {
+    if (escrow?.mode === "MULTISIG") loadMultiSigStatus();
+  }, [escrow?.mode, loadMultiSigStatus]);
+
+  const generateShareLink = async () => {
+    try {
+      const res = await fetch(`${API}/deal/generate`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ escrowId }),
+      });
+      const data = await res.json();
+      if (data.shareToken) {
+        const link = `${window.location.origin}/deal/${data.shareToken}`;
+        setShareLink(link);
+        showMsg("Share link generated!");
+      } else {
+        showMsg(data.error || "Failed to generate share link", "error");
+      }
+    } catch {
+      showMsg("Network error", "error");
+    }
+  };
+
+  const copyShareLink = () => {
+    navigator.clipboard.writeText(shareLink);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
+  };
+
+  const submitMultiSigApproval = async (action: string) => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${API}/user/escrows/${escrowId}/multisig/approve`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (data.approval) {
+        showMsg(`Approval submitted for ${action}.`);
+        loadMultiSigStatus();
+        loadEscrow();
+      } else {
+        showMsg(data.error || "Failed to submit approval", "error");
+      }
+    } catch {
+      showMsg("Network error", "error");
+    }
+    setActionLoading(false);
+  };
 
   const generateDepositWallet = async () => {
     setActionLoading(true);
@@ -455,7 +525,7 @@ export default function EscrowDetailPage() {
           </h2>
           <p className="text-[13px] opacity-50 mt-1">
             {escrow.network} &middot; {escrow.token?.symbol || "N/A"} &middot;{" "}
-            {escrow.mode === "ARBITER" ? "Arbiter" : "Locked"} Mode
+            {escrow.mode === "MULTISIG" ? "Multi-Sig" : escrow.mode === "ARBITER" ? "Arbiter" : "Locked"} Mode
           </p>
         </div>
 
@@ -821,6 +891,85 @@ export default function EscrowDetailPage() {
                 )}
               </div>
             </div>
+
+            {/* Share Link */}
+            <div className="border-2 border-divider">
+              <div className="px-5 py-3 border-b-2 border-divider">
+                <h3 className="font-heading font-extrabold text-sm uppercase tracking-wider">
+                  Share Deal
+                </h3>
+              </div>
+              <div className="p-5 space-y-3">
+                {shareLink ? (
+                  <>
+                    <p className="text-xs opacity-50 break-all font-mono">{shareLink}</p>
+                    <button onClick={copyShareLink} className="btn btn-secondary w-full">
+                      {shareCopied ? <Check size={16} /> : <Copy size={16} />}
+                      {shareCopied ? "Copied!" : "Copy Share Link"}
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={generateShareLink} className="btn btn-secondary w-full">
+                    <Share2 size={16} />
+                    Generate Share Link
+                  </button>
+                )}
+                <p className="text-xs opacity-40">
+                  Anyone with this link can view the deal details publicly.
+                </p>
+              </div>
+            </div>
+
+            {/* Multi-Sig Approval */}
+            {escrow.mode === "MULTISIG" && multiSigStatus && (
+              <div className="border-2 border-divider">
+                <div className="px-5 py-3 border-b-2 border-divider">
+                  <h3 className="font-heading font-extrabold text-sm uppercase tracking-wider">
+                    Multi-Sig Status
+                  </h3>
+                </div>
+                <div className="p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs opacity-50">Required Signatures</span>
+                    <span className="text-sm font-heading font-extrabold">{multiSigStatus.requiredSignatures || escrow.requiredSignatures}</span>
+                  </div>
+                  {multiSigStatus.pendingActions?.map((action: any) => (
+                    <div key={action.action} className="border-2 border-divider p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold">{action.action}</span>
+                        <span className="tag tag-neutral">
+                          {action.approvals}/{action.required}
+                        </span>
+                      </div>
+                      <div className="h-[4px] bg-neutral-200 mb-2">
+                        <div
+                          className="h-full bg-accent transition-all"
+                          style={{ width: `${(action.approvals / action.required) * 100}%` }}
+                        />
+                      </div>
+                      {(isBuyer || isSeller) && !action.userApproved && isActiveOrFunded && (
+                        <button
+                          onClick={() => submitMultiSigApproval(action.action)}
+                          disabled={actionLoading}
+                          className="btn btn-primary w-full text-xs py-1.5 disabled:opacity-40"
+                        >
+                          <Users size={14} />
+                          {actionLoading ? "Submitting..." : "Approve"}
+                        </button>
+                      )}
+                      {action.userApproved && (
+                        <p className="text-xs text-green-600 flex items-center gap-1">
+                          <CheckCircle size={12} /> You approved this action
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                  {(!multiSigStatus.pendingActions || multiSigStatus.pendingActions.length === 0) && (
+                    <p className="text-xs opacity-50 text-center py-2">No pending approvals</p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Deposit Info */}
             {(escrow.state === "CREATED" || escrow.state === "FUNDED") && (

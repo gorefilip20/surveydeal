@@ -10,6 +10,12 @@ import {
   BarChart3,
   Zap,
   ArrowRight,
+  Users,
+  Star,
+  FileText,
+  Building2,
+  Briefcase,
+  Key,
 } from "lucide-react";
 import Nav from "@/components/Nav";
 
@@ -42,19 +48,28 @@ const FEATURES = [
   },
   {
     icon: Shield,
-    title: "Arbiter Resolution",
-    desc: "Neutral third-party settles disputes with fair percentage splits.",
+    title: "Multi-Sig & Arbiter",
+    desc: "Choose 2-of-2 locked, 2-of-3 arbiter, or multi-signature approval modes.",
   },
   {
     icon: BarChart3,
-    title: "Milestone Payments",
-    desc: "Release funds in stages as work is delivered and approved.",
+    title: "Trust Scores",
+    desc: "On-chain reputation system. Build trust through completed deals and ratings.",
   },
   {
     icon: Zap,
-    title: "Fast Settlement",
-    desc: "Secure settlement across 8 EVM chains. Milestone-based releases.",
+    title: "One-Link Deals",
+    desc: "Share a single link to invite anyone to view and fund your escrow.",
   },
+];
+
+const VERTICALS = [
+  { icon: Briefcase, title: "Freelance", desc: "Web dev, design, writing — milestone payments for services" },
+  { icon: Building2, title: "Real Estate", desc: "Earnest money deposits and property transaction escrows" },
+  { icon: Coins, title: "Crypto OTC", desc: "Secure token trades with verified counterparties" },
+  { icon: Globe, title: "Domain Sales", desc: "Safe domain name transfers with escrowed funds" },
+  { icon: Users, title: "Partnerships", desc: "Investment deals and profit-sharing agreements" },
+  { icon: Star, title: "Influencer", desc: "Sponsorship and collaboration payment milestones" },
 ];
 
 const STEPS = [
@@ -189,6 +204,72 @@ export default function LandingPage() {
                 <p className="text-xs opacity-50">{s.desc}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      <div className="max-w-[1120px] mx-auto px-6"><hr className="border-0 h-[2px] bg-divider" /></div>
+
+      {/* Industry Verticals */}
+      <section className="py-16">
+        <div className="max-w-[1120px] mx-auto px-6">
+          <p className="text-xs font-semibold tracking-wider uppercase text-accent mb-2">Verticals</p>
+          <h2 className="text-3xl font-heading font-extrabold mb-3">Escrow for every industry.</h2>
+          <p className="text-sm opacity-60 mb-10 max-w-[500px]">
+            Pre-built templates and milestone structures for real estate, freelancing, crypto OTC, partnerships, and more.
+          </p>
+          <div className="bg-divider grid grid-cols-1 md:grid-cols-3 gap-[2px]">
+            {VERTICALS.map((v) => {
+              const Icon = v.icon;
+              return (
+                <div key={v.title} className="bg-bg p-6">
+                  <div className="w-10 h-10 bg-accent flex items-center justify-center mb-4">
+                    <Icon className="w-5 h-5 text-white" />
+                  </div>
+                  <h3 className="text-base font-heading font-extrabold mb-1">{v.title}</h3>
+                  <p className="text-sm opacity-60">{v.desc}</p>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-6 flex gap-3">
+            <Link href="/templates" className="btn btn-secondary">
+              <FileText className="w-4 h-4" />
+              Browse Templates
+            </Link>
+            <Link href="/feed" className="btn btn-ghost">
+              View Deal Feed
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <div className="max-w-[1120px] mx-auto px-6"><hr className="border-0 h-[2px] bg-divider" /></div>
+
+      {/* Trust & Security */}
+      <section className="py-16">
+        <div className="max-w-[1120px] mx-auto px-6">
+          <p className="text-xs font-semibold tracking-wider uppercase text-accent mb-2">Trust & Security</p>
+          <h2 className="text-3xl font-heading font-extrabold mb-10">Built-in protection at every level.</h2>
+          <div className="border-2 border-divider grid grid-cols-1 md:grid-cols-4">
+            {[
+              { title: "Verified Tiers", desc: "Anonymous, Verified, and KYC levels with increasing escrow limits", icon: Shield },
+              { title: "Trust Scores", desc: "On-chain reputation built through completed deals, ratings, and volume", icon: Star },
+              { title: "API & White-Label", desc: "Integrate escrow into your own platform with API keys", icon: Key },
+              { title: "Referral Program", desc: "Earn 10% of protocol fees when you refer new traders", icon: Users },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.title} className={`p-5 ${i < 3 ? "md:border-r-2 md:border-divider border-b-2 md:border-b-0" : ""}`}>
+                  <div className="w-9 h-9 bg-accent flex items-center justify-center text-white mb-3">
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  <h4 className="text-sm font-heading font-extrabold mb-1">{item.title}</h4>
+                  <p className="text-xs opacity-50">{item.desc}</p>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>

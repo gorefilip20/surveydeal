@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
@@ -12,6 +13,10 @@ import {
   Search,
   AlertTriangle,
   Shield,
+  Users,
+  Clock,
+  Tag,
+  Gift,
 } from "lucide-react";
 import WalletLogin from "@/components/WalletLogin";
 import Nav from "@/components/Nav";
@@ -49,12 +54,26 @@ interface TokenResult {
   priceChange24h?: number;
 }
 
+const CATEGORIES = [
+  { id: "CUSTOM", label: "Custom" },
+  { id: "CRYPTO_TRADE", label: "Crypto Trade" },
+  { id: "FREELANCE", label: "Freelance" },
+  { id: "REAL_ESTATE", label: "Real Estate" },
+  { id: "DOMAIN_SALE", label: "Domain Sale" },
+  { id: "VEHICLE_SALE", label: "Vehicle Sale" },
+  { id: "WHOLESALE", label: "Wholesale" },
+  { id: "PARTNERSHIP", label: "Partnership" },
+  { id: "INFLUENCER", label: "Influencer" },
+];
+
 interface Milestone {
   description: string;
   amount: string;
 }
 
-export default function CreateEscrowPage() {
+function CreateEscrowInner() {
+  const searchParams = useSearchParams();
+  const templateId = searchParams.get("template");
   const [token, setToken] = useState("");
   const [step, setStep] = useState(1);
 
@@ -66,7 +85,7 @@ export default function CreateEscrowPage() {
   const [totalAmount, setTotalAmount] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [mode, setMode] = useState(0);
+  const [mode, setMode] = useState<number | string>(0);
   const [arbiterAddress, setArbiterAddress] = useState("");
   const [deadline, setDeadline] = useState("");
   const [milestones, setMilestones] = useState<Milestone[]>([{ description: "", amount: "" }]);
@@ -75,6 +94,12 @@ export default function CreateEscrowPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [category, setCategory] = useState("CUSTOM");
+  const [referralCode, setReferralCode] = useState("");
+  const [isInsured, setIsInsured] = useState(false);
+  const [timeLockHours, setTimeLockHours] = useState("");
+  const [requiredSignatures, setRequiredSignatures] = useState(2);
+  const [templateData, setTemplateData] = useState<any>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("user_token");
@@ -92,6 +117,29 @@ export default function CreateEscrowPage() {
         .catch(() => {});
     }
   }, []);
+
+  useEffect(() => {
+    if (!templateId) return;
+    fetch(`${API}/templates/${templateId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.id) {
+          setTemplateData(data);
+          setTitle(data.name || "");
+          setDescription(data.description || "");
+          setCategory(data.category || "CUSTOM");
+          if (data.milestoneStructure?.length) {
+            setMilestones(
+              data.milestoneStructure.map((m: any) => ({
+                description: m.description || "",
+                amount: "",
+              }))
+            );
+          }
+        }
+      })
+      .catch(() => {});
+  }, [templateId]);
 
   const searchTokens = useCallback(async (query: string) => {
     if (!query || query.length < 2) {
@@ -176,9 +224,15 @@ export default function CreateEscrowPage() {
           arbiterWallet: mode === 1 ? arbiterAddress : undefined,
           tokenAddress: selectedToken.address,
           totalAmount,
-          mode,
+          mode: mode === "MULTISIG" ? "MULTISIG" : mode,
           deadline: deadline || undefined,
           milestones: milestones.filter((m) => m.description && m.amount),
+          category,
+          templateId: templateData?.id || undefined,
+          referralCode: referralCode || undefined,
+          isInsured,
+          timeLockHours: timeLockHours ? parseInt(timeLockHours) : undefined,
+          requiredSignatures: mode === "MULTISIG" ? requiredSignatures : undefined,
         }),
       });
 
@@ -420,6 +474,13 @@ export default function CreateEscrowPage() {
               <p className="text-sm opacity-60">Set up the trade terms</p>
             </div>
 
+            {templateData && (
+              <div className="border-2 border-accent bg-accent/5 px-4 py-3 text-sm flex items-center gap-2">
+                <Tag className="w-4 h-4 text-accent flex-shrink-0" />
+                <span>Using template: <strong>{templateData.name}</strong></span>
+              </div>
+            )}
+
             <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -475,6 +536,21 @@ export default function CreateEscrowPage() {
                   )}
                 </div>
                 <div>
+                  <label className="block text-sm font-semibold mb-1">Category</label>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="sd-input w-full"
+                  >
+                    {CATEGORIES.map((c) => (
+                      <option key={c.id} value={c.id}>{c.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
                   <label className="block text-sm font-semibold mb-1">Deadline (optional)</label>
                   <input
                     type="datetime-local"
@@ -483,11 +559,26 @@ export default function CreateEscrowPage() {
                     className="sd-input w-full"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">
+                    <Clock className="w-3.5 h-3.5 inline mr-1" />
+                    Time-Lock (hours)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0 (no lock)"
+                    value={timeLockHours}
+                    onChange={(e) => setTimeLockHours(e.target.value)}
+                    className="sd-input w-full"
+                  />
+                  <p className="text-xs opacity-40 mt-1">Funds locked for this duration after funding</p>
+                </div>
               </div>
 
               <div>
                 <label className="block text-sm font-semibold mb-2">Escrow Mode</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <button
                     type="button"
                     onClick={() => setMode(0)}
@@ -507,9 +598,9 @@ export default function CreateEscrowPage() {
                         2-OF-2
                       </span>
                     </div>
-                    <p className="font-heading font-extrabold mb-1">Locked Mode</p>
+                    <p className="font-heading font-extrabold mb-1 text-sm">Locked</p>
                     <p className={`text-xs ${mode === 0 ? "text-white/80" : "opacity-60"}`}>
-                      Both parties must cooperate. No third-party intervention.
+                      Both parties must cooperate.
                     </p>
                   </button>
 
@@ -532,9 +623,34 @@ export default function CreateEscrowPage() {
                         2-OF-3
                       </span>
                     </div>
-                    <p className="font-heading font-extrabold mb-1">Arbiter Mode</p>
+                    <p className="font-heading font-extrabold mb-1 text-sm">Arbiter</p>
                     <p className={`text-xs ${mode === 1 ? "text-white/80" : "opacity-60"}`}>
                       Trusted arbiter resolves disputes.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMode("MULTISIG")}
+                    className={`text-left p-4 border-2 transition-colors ${
+                      mode === "MULTISIG"
+                        ? "bg-accent text-white border-accent"
+                        : "bg-bg border-divider hover:border-accent"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <Users className="w-5 h-5" />
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase border-2 ${
+                          mode === "MULTISIG" ? "border-white text-white" : "border-divider text-text"
+                        }`}
+                      >
+                        M-OF-N
+                      </span>
+                    </div>
+                    <p className="font-heading font-extrabold mb-1 text-sm">Multi-Sig</p>
+                    <p className={`text-xs ${mode === "MULTISIG" ? "text-white/80" : "opacity-60"}`}>
+                      Multiple approvals required.
                     </p>
                   </button>
                 </div>
@@ -552,6 +668,64 @@ export default function CreateEscrowPage() {
                   />
                 </div>
               )}
+
+              {mode === "MULTISIG" && (
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Required Signatures</label>
+                  <select
+                    value={requiredSignatures}
+                    onChange={(e) => setRequiredSignatures(parseInt(e.target.value))}
+                    className="sd-input w-full"
+                  >
+                    <option value={2}>2 of 3</option>
+                    <option value={3}>3 of 5</option>
+                  </select>
+                  <p className="text-xs opacity-40 mt-1">
+                    {requiredSignatures === 2 ? "2 approvals needed from 3 signers" : "3 approvals needed from 5 signers"}
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="border-2 border-divider p-4">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <p className="text-sm font-semibold flex items-center gap-1.5">
+                        <Shield className="w-4 h-4 text-accent" />
+                        Escrow Insurance
+                      </p>
+                      <p className="text-xs opacity-50 mt-1">Protect against disputes with insured funds</p>
+                    </div>
+                    <div
+                      className={`w-10 h-6 flex items-center px-0.5 cursor-pointer transition-colors ${
+                        isInsured ? "bg-accent" : "bg-neutral-300"
+                      }`}
+                      onClick={() => setIsInsured(!isInsured)}
+                    >
+                      <div
+                        className={`w-5 h-5 bg-white transition-transform ${
+                          isInsured ? "translate-x-4" : "translate-x-0"
+                        }`}
+                      />
+                    </div>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-1">
+                    <Gift className="w-3.5 h-3.5 inline mr-1" />
+                    Referral Code (optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="SD-XXXXXXXX"
+                    value={referralCode}
+                    onChange={(e) => setReferralCode(e.target.value)}
+                    className="sd-input w-full font-mono"
+                  />
+                  <p className="text-xs opacity-40 mt-1">Enter a referral code for fee discounts</p>
+                </div>
+              </div>
             </div>
 
             <div className="flex gap-3">
@@ -705,12 +879,36 @@ export default function CreateEscrowPage() {
                 </div>
                 <div>
                   <p className="text-xs opacity-50">Mode</p>
-                  <p className="text-sm font-semibold">{mode === 0 ? "Locked (2-of-2)" : "Arbiter (2-of-3)"}</p>
+                  <p className="text-sm font-semibold">
+                    {mode === "MULTISIG" ? `Multi-Sig (${requiredSignatures}-of-${requiredSignatures === 2 ? 3 : 5})` : mode === 0 ? "Locked (2-of-2)" : "Arbiter (2-of-3)"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs opacity-50">Category</p>
+                  <span className="tag tag-neutral">{CATEGORIES.find((c) => c.id === category)?.label}</span>
                 </div>
                 {deadline && (
                   <div>
                     <p className="text-xs opacity-50">Deadline</p>
                     <p className="text-sm">{new Date(deadline).toLocaleString()}</p>
+                  </div>
+                )}
+                {timeLockHours && (
+                  <div>
+                    <p className="text-xs opacity-50">Time-Lock</p>
+                    <p className="text-sm">{timeLockHours} hours</p>
+                  </div>
+                )}
+                {isInsured && (
+                  <div>
+                    <p className="text-xs opacity-50">Insurance</p>
+                    <p className="text-sm text-green-600 font-semibold">Insured</p>
+                  </div>
+                )}
+                {referralCode && (
+                  <div>
+                    <p className="text-xs opacity-50">Referral</p>
+                    <p className="text-sm font-mono">{referralCode}</p>
                   </div>
                 )}
               </div>
@@ -755,5 +953,13 @@ export default function CreateEscrowPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function CreateEscrowPage() {
+  return (
+    <Suspense>
+      <CreateEscrowInner />
+    </Suspense>
   );
 }
